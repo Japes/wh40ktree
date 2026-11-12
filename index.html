@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Lineage of the Adeptus Astartes</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@500;700&family=Alegreya+Sans:ital,wght@0,400;0,500;0,700;1,400&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#e8eaee; --surface:#f5f6f8; --ink:#1a2130; --muted:#5b6474; --brass:#86662a;
+  --line:rgba(134,102,42,.55); --band-a:rgba(26,33,48,.045); --band-b:rgba(26,33,48,0);
+  --traitor:#9b2f2c; --sel:rgba(134,102,42,.18); --shadow:rgba(20,26,38,.18);
+  --display:"Cinzel", "Trajan Pro", "Times New Roman", serif;
+  --ui:"Alegreya Sans", "Gill Sans", "Segoe UI", system-ui, sans-serif;
+  box-sizing:border-box; padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#121821; --surface:#1a2230; --ink:#e6dec9; --muted:#939cab; --brass:#c9a35c;
+    --line:rgba(201,163,92,.42); --band-a:rgba(230,222,201,.035); --band-b:rgba(230,222,201,0);
+    --traitor:#d26a63; --sel:rgba(201,163,92,.16); --shadow:rgba(0,0,0,.45);
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#121821; --surface:#1a2230; --ink:#e6dec9; --muted:#939cab; --brass:#c9a35c;
+  --line:rgba(201,163,92,.42); --band-a:rgba(230,222,201,.035); --band-b:rgba(230,222,201,0);
+  --traitor:#d26a63; --sel:rgba(201,163,92,.16); --shadow:rgba(0,0,0,.45);
+  color-scheme:dark;
+}
+*,*::before,*::after{box-sizing:inherit}
+html,body{height:100%;margin:0}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{background:var(--bg);color:var(--ink);font-family:var(--ui);font-size:16px;line-height:1.45;display:flex;flex-direction:column;overflow:hidden}
+button,input{font:inherit;color:inherit}
+
+/* ---------- top bar ---------- */
+header{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem 1.2rem;padding:.7rem 1.1rem;border-bottom:1px solid var(--line);background:var(--surface);position:relative;z-index:5}
+.title h1{font-family:var(--display);font-weight:700;font-size:1.3rem;letter-spacing:.04em;margin:0;line-height:1.1}
+.title p{margin:.1rem 0 0;color:var(--muted);font-size:.9rem}
+.tools{display:flex;flex-wrap:wrap;gap:.45rem;align-items:center;margin-left:auto}
+.tools input[type=search]{background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:.38rem .6rem;width:14rem;max-width:60vw}
+.btn{background:transparent;border:1px solid var(--line);border-radius:4px;padding:.34rem .7rem;cursor:pointer;white-space:nowrap}
+.btn:hover{background:var(--sel)}
+.btn[aria-pressed="false"]{color:var(--muted)}
+.zoom{display:flex}
+.zoom .btn{border-radius:0;min-width:2.2rem}
+.zoom .btn:first-child{border-radius:4px 0 0 4px}
+.zoom .btn:last-child{border-radius:0 4px 4px 0;border-left:0}
+:focus-visible{outline:2px solid var(--brass);outline-offset:2px}
+
+/* ---------- stage ---------- */
+#stage{position:relative;flex:1;min-height:0;overflow:hidden;touch-action:none;cursor:grab}
+#stage.dragging{cursor:grabbing}
+svg#tree{position:absolute;inset:0;width:100%;height:100%;display:block}
+#cols{position:absolute;top:0;left:0;right:0;height:64px;pointer-events:none;z-index:2;background:linear-gradient(var(--bg) 70%,transparent)}
+.col{position:absolute;top:0;height:64px;padding:.5rem .7rem 0;border-left:1px solid var(--line);overflow:hidden;white-space:nowrap}
+.col b{display:block;font-family:var(--display);font-weight:700;font-size:.9rem;letter-spacing:.03em;color:var(--brass);overflow:hidden;text-overflow:ellipsis}
+.col i{display:block;font-size:.8rem;color:var(--ink);overflow:hidden;text-overflow:ellipsis}
+.col span{display:block;font-size:.75rem;color:var(--muted)}
+.col.narrow i,.col.narrow span{display:none}
+.col.tiny{visibility:hidden}
+.col.unrec{border-left-style:dashed}
+
+.band{fill:var(--band-a)}
+.band.alt{fill:var(--band-b)}
+.band.unrec{fill:none;stroke:var(--line);stroke-dasharray:4 6}
+.edge{fill:none;stroke:var(--line);stroke-width:1.4}
+.edge.to-traitor{stroke:var(--traitor);stroke-opacity:.45;stroke-dasharray:3 4}
+.node{cursor:pointer;outline:none}
+.node .hit{fill:transparent;rx:4}
+.node:hover .hit,.node:focus-visible .hit{fill:var(--sel)}
+.node.sel .hit{fill:var(--sel);stroke:var(--brass);stroke-width:1}
+.node text.lbl{font-family:var(--ui);font-size:14px;fill:var(--ink);dominant-baseline:middle}
+.node.legion text.lbl{font-weight:700}
+.node.root text.lbl{font-family:var(--display);font-weight:700;font-size:15px;fill:var(--brass)}
+.node.group text.lbl{font-style:italic;fill:var(--muted)}
+.node.traitor text.lbl{fill:var(--traitor)}
+.node.lost text.lbl,.node.expunged text.lbl{font-style:italic;fill:var(--muted)}
+.node.conn{opacity:.45}
+.node .count{fill:var(--muted);font-weight:400;font-size:12px}
+.sh-o{fill:none;stroke:var(--ink);stroke-opacity:.55;stroke-width:.9}
+.node.traitor .sh-o{stroke:var(--traitor);stroke-opacity:1;stroke-dasharray:2 1.5}
+.knob circle{fill:var(--surface);stroke:var(--brass);stroke-width:1.3}
+.knob text{fill:var(--brass);font-size:13px;font-weight:700;text-anchor:middle;dominant-baseline:central;pointer-events:none}
+.knob:hover circle{fill:var(--brass)}
+.knob:hover text{fill:var(--surface)}
+
+.hint{position:absolute;left:1rem;bottom:.8rem;font-size:.82rem;color:var(--muted);background:var(--surface);border:1px solid var(--line);border-radius:4px;padding:.3rem .6rem;pointer-events:none;z-index:2}
+
+/* ---------- detail panel ---------- */
+#panel{position:absolute;top:0;right:0;bottom:0;width:min(380px,100%);background:var(--surface);border-left:1px solid var(--line);box-shadow:-8px 0 24px var(--shadow);z-index:4;overflow-y:auto;padding:1.2rem 1.3rem 2rem;transform:translateX(105%);transition:transform .22s ease}
+#panel.open{transform:none}
+@media (prefers-reduced-motion: reduce){#panel{transition:none}}
+#panel .close{position:absolute;top:.7rem;right:.7rem}
+.crest{display:flex;gap:1rem;align-items:center;margin:.4rem 0 1rem}
+.crest .shield{position:relative;width:84px;height:100px;flex:none}
+.crest .shield svg,.crest .shield img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+#panel h2{font-family:var(--display);font-weight:700;font-size:1.45rem;line-height:1.15;margin:0}
+.status{font-size:.92rem;color:var(--muted);margin-top:.2rem}
+.status.traitor{color:var(--traitor)}
+#panel dl{display:grid;grid-template-columns:auto 1fr;gap:.35rem .9rem;margin:0 0 1rem}
+#panel dt{color:var(--muted);font-size:.9rem}
+#panel dd{margin:0}
+.linkish{background:none;border:0;padding:0;color:var(--brass);cursor:pointer;text-decoration:underline;text-underline-offset:2px;text-align:left}
+.kids{display:flex;flex-wrap:wrap;gap:.25rem .7rem}
+.note{max-width:62ch;margin:0 0 1.2rem}
+#panel h3{font-family:var(--display);font-size:.95rem;font-weight:700;color:var(--brass);margin:1.2rem 0 .5rem;letter-spacing:.03em}
+.wikis{display:flex;flex-direction:column;gap:.45rem}
+.wikis a{display:block;border:1px solid var(--line);border-radius:4px;padding:.5rem .75rem;color:var(--ink);text-decoration:none}
+.wikis a:hover{background:var(--sel)}
+.wikis a small{display:block;color:var(--muted);font-size:.82rem}
+.fine{font-size:.82rem;color:var(--muted);margin-top:1.2rem}
+
+@media (max-width: 700px){
+  header{padding:.6rem .8rem}
+  .title p{display:none}
+  .tools{margin-left:0;width:100%}
+  .tools input[type=search]{flex:1;width:auto}
+  #panel{top:auto;width:100%;height:62%;border-left:0;border-top:1px solid var(--line);transform:translateY(105%);box-shadow:0 -8px 24px var(--shadow)}
+  #panel.open{transform:none}
+  .hint{display:none}
+}
+</style>
+</head>
+<body>
+<header>
+  <div class="title">
+    <h1>Lineage of the Adeptus Astartes</h1>
+    <p>Read left to right: from the Emperor’s twenty Legions to the Ultima Founding and the Chapters that fell.</p>
+  </div>
+  <div class="tools">
+    <input type="search" id="search" list="names" placeholder="Find a Legion or Chapter" aria-label="Find a Legion or Chapter">
+    <datalist id="names"></datalist>
+    <button class="btn" id="loyalists" aria-pressed="true">Loyalists shown</button>
+    <button class="btn" id="traitors" aria-pressed="true">Traitors shown</button>
+    <button class="btn" id="expandAll">Expand all</button>
+    <button class="btn" id="collapseAll">Legions only</button>
+    <div class="zoom">
+      <button class="btn" id="zoomOut" aria-label="Zoom out">−</button>
+      <button class="btn" id="fit">Fit</button>
+      <button class="btn" id="zoomIn" aria-label="Zoom in">+</button>
+    </div>
+  </div>
+</header>
+
+<div id="stage">
+  <svg id="tree" aria-label="Family tree of Space Marine Legions and Chapters"><g id="world"></g></svg>
+  <div id="cols" aria-hidden="true"></div>
+  <div class="hint">Drag to pan, scroll or pinch to zoom. Click a ± knob to fold a branch.</div>
+  <aside id="panel" aria-live="polite" aria-label="Details"></aside>
+</div>
+
+<script>
+/* =====================================================================
+   HERALDRY IMAGES
+   The hosted preview can’t load images from other sites, so shields fall
+   back to a two-colour scheme swatch. Once you self-host, save badge images
+   next to this file and either map ids individually or set a pattern:
+     HERALDRY_PATTERN = "heraldry/{id}.png";
+   Ids are the lowercase-hyphenated names in NODES below.
+   ===================================================================== */
+const HERALDRY = { /* "ultramarines": "heraldry/ultramarines.png" */ };
+const HERALDRY_PATTERN = "";
+const HERALDRY_SOURCE = { label: "", url: "" }; // e.g. the archived database page, shown as a credit link
+
+/* ===================== FOUNDINGS (oldest first) ===================== */
+const COLS = [
+  {id:"origin", name:"Origin", ep:"", date:"M30"},
+  {id:"f1", name:"First Founding", ep:"The Legiones Astartes", date:"M29–M30"},
+  {id:"secret", name:"Outside the Foundings", ep:"Raised in secret", date:"M31"},
+  {id:"warbands", name:"Traitor warbands", ep:"Splintered after the Heresy", date:"M31 onward", era:true},
+  {id:"f2", name:"Second Founding", ep:"The Legions divided", date:"021.M31"},
+  {id:"f3", name:"Third Founding", ep:"Proposed by Rogal Dorn", date:"001.M32"},
+  {id:"f4", name:"Fourth Founding", ep:"After the War of the Beast", date:"546.M32"},
+  {id:"f8", name:"Eighth Founding", ep:"", date:"Mid-M34"},
+  {id:"f9", name:"Ninth Founding", ep:"", date:"Date unknown"},
+  {id:"f10", name:"Tenth Founding", ep:"", date:"Mid-M35", note:"Only some Chapters’ placement in this Founding is confirmed."},
+  {id:"f13", name:"Thirteenth Founding", ep:"The Dark Founding", date:"Late M35–early M36"},
+  {id:"f17", name:"Seventeenth Founding", ep:"", date:"Date unknown"},
+  {id:"f21", name:"Twenty-First Founding", ep:"The Cursed Founding", date:"991.M35", note:"Some sources date it before the Thirteenth; it’s shown here in numbered order."},
+  {id:"edict", name:"Ratified by edict", ep:"Outside the Foundings", date:"011.M37"},
+  {id:"f23", name:"Twenty-Third Founding", ep:"The Sentinel Founding", date:"Late M37–early M38"},
+  {id:"f24", name:"Twenty-Fourth Founding", ep:"", date:"Date unknown"},
+  {id:"f25", name:"Twenty-Fifth Founding", ep:"The Bastion Founding", date:"Late M40"},
+  {id:"f26", name:"Twenty-Sixth Founding", ep:"", date:"738.M41"},
+  {id:"ultima", name:"Ultima Founding", ep:"Primaris Chapters", date:"c. 999.M41"},
+  {id:"unrec", name:"Founding unrecorded", ep:"Number or date lost", date:"Any era"},
+  {id:"fallen", name:"Fallen to Chaos", ep:"Loyal Chapters turned renegade", date:"Mostly M41", era:true}
+];
+
+/* ===================== LEGIONS & CHAPTERS =====================
+   f: founding id   p: gene-seed parent id   c: [primary, secondary] colour
+   s: loyal | traitor | lost | renegade | expunged | root | group
+   n: note          num: Legion numeral
+   lex / fan / d4: page-title overrides for Lexicanum, Fandom, 1d4chan  */
+const NODES = [
+  {id:"emperor", name:"The Emperor of Mankind", f:"origin", s:"root", c:["#c9a35c","#7d6331"], n:"Source of all Astartes gene-seed, carried through the twenty Primarchs.", lex:"Emperor of Mankind", fan:"Emperor of Mankind", d4:"God-Emperor of Mankind"},
+
+  // First Founding — the Legions
+  {id:"dark-angels", name:"Dark Angels", num:"I", f:"f1", p:"emperor", c:["#1f3d2b","#cdb98f"], n:"Primarch Lion El’Jonson. Homeworld Caliban."},
+  {id:"ii-legion", name:"II Legion", num:"II", f:"f1", p:"emperor", s:"expunged", c:["#5a5f66","#3b3f45"], n:"One of two Legions whose records were expunged from Imperial archives."},
+  {id:"emperors-children", name:"Emperor’s Children", num:"III", f:"f1", p:"emperor", s:"traitor", c:["#5e2a6b","#d0ac4a"], n:"Primarch Fulgrim. Joined Horus in the Heresy."},
+  {id:"iron-warriors", name:"Iron Warriors", num:"IV", f:"f1", p:"emperor", s:"traitor", c:["#7d8288","#d2ac2f"], n:"Primarch Perturabo. Joined Horus in the Heresy."},
+  {id:"white-scars", name:"White Scars", num:"V", f:"f1", p:"emperor", c:["#ece8de","#a62324"], n:"Primarch Jaghatai Khan. Homeworld Chogoris."},
+  {id:"space-wolves", name:"Space Wolves", num:"VI", f:"f1", p:"emperor", c:["#7f93a4","#c9a24d"], n:"Primarch Leman Russ. Homeworld Fenris. Never fully adopted the Codex Astartes."},
+  {id:"imperial-fists", name:"Imperial Fists", num:"VII", f:"f1", p:"emperor", c:["#e2b42a","#1d1d1d"], n:"Primarch Rogal Dorn. Defenders of Terra during the Siege."},
+  {id:"night-lords", name:"Night Lords", num:"VIII", f:"f1", p:"emperor", s:"traitor", c:["#1e2b55","#b9bcc2"], n:"Primarch Konrad Curze. Joined Horus in the Heresy."},
+  {id:"blood-angels", name:"Blood Angels", num:"IX", f:"f1", p:"emperor", c:["#9e1b1d","#d4ab3e"], n:"Primarch Sanguinius. Homeworld Baal."},
+  {id:"iron-hands", name:"Iron Hands", num:"X", f:"f1", p:"emperor", c:["#202224","#a2a8ae"], n:"Primarch Ferrus Manus. Homeworld Medusa."},
+  {id:"xi-legion", name:"XI Legion", num:"XI", f:"f1", p:"emperor", s:"expunged", c:["#5a5f66","#3b3f45"], n:"One of two Legions whose records were expunged from Imperial archives."},
+  {id:"world-eaters", name:"World Eaters", num:"XII", f:"f1", p:"emperor", s:"traitor", c:["#e7e2d7","#2e4f8f"], n:"Primarch Angron. Joined Horus in the Heresy."},
+  {id:"ultramarines", name:"Ultramarines", num:"XIII", f:"f1", p:"emperor", c:["#1f50a2","#d4ab3e"], n:"Primarch Roboute Guilliman, author of the Codex Astartes. Homeworld Macragge. Over half of all Chapters are said to carry their gene-seed."},
+  {id:"death-guard", name:"Death Guard", num:"XIV", f:"f1", p:"emperor", s:"traitor", c:["#c9c4a9","#4d5b30"], n:"Primarch Mortarion. Joined Horus in the Heresy."},
+  {id:"thousand-sons", name:"Thousand Sons", num:"XV", f:"f1", p:"emperor", s:"traitor", c:["#a52220","#d8b43e"], n:"Primarch Magnus the Red. Homeworld Prospero."},
+  {id:"sons-of-horus", name:"Sons of Horus", num:"XVI", f:"f1", p:"emperor", s:"traitor", c:["#2f6d60","#d4ab3e"], n:"Primarch Horus. Originally the Luna Wolves; later renamed the Black Legion."},
+  {id:"word-bearers", name:"Word Bearers", num:"XVII", f:"f1", p:"emperor", s:"traitor", c:["#7b1f26","#c8a34b"], n:"Primarch Lorgar. Homeworld Colchis."},
+  {id:"salamanders", name:"Salamanders", num:"XVIII", f:"f1", p:"emperor", c:["#1f6d3b","#2b2b2b"], n:"Primarch Vulkan. Homeworld Nocturne. Too few in number after the Heresy to produce recorded Second Founding successors."},
+  {id:"raven-guard", name:"Raven Guard", num:"XIX", f:"f1", p:"emperor", c:["#1c1c1c","#e6e6e6"], n:"Primarch Corax. Homeworld Deliverance."},
+  {id:"alpha-legion", name:"Alpha Legion", num:"XX", f:"f1", p:"emperor", s:"traitor", c:["#2f6f79","#c0c6cc"], n:"Primarchs Alpharius and Omegon. Joined Horus in the Heresy."},
+
+  // Traitor Legion offshoots (shown under their Legion of origin)
+  {id:"the-fallen", name:"The Fallen", f:"warbands", p:"dark-angels", s:"traitor", kind:"warband", n:"Dark Angels who sided against the Lion during the Heresy and were scattered through time and space when Caliban was destroyed.", lex:"Fallen", fan:"Fallen Angels", d4:"Fallen Angels"},
+  {id:"glittering-myriad", name:"Glittering Myriad", f:"warbands", p:"emperors-children", s:"traitor", kind:"warband", n:"Slaaneshi warband led by Aesclemos."},
+  {id:"the-faultless", name:"The Faultless", f:"warbands", p:"emperors-children", s:"traitor", kind:"warband", n:"Lucius the Eternal’s warband; it absorbed the remnants of his old Heresy-era bodyguard, the Cohors Nasicae."},
+  {id:"gloomtalons", name:"Gloomtalons", f:"warbands", p:"night-lords", s:"traitor", kind:"warband", n:"Haarken Worldclaimer’s Raptor warband, now heralds of the Black Legion."},
+  {id:"blades-of-savasdus", name:"Blades of Savasdus", f:"warbands", p:"night-lords", s:"traitor", kind:"warband", n:"Led the Night Lords warbands in the war on Vigilus."},
+  {id:"shadow-flayers", name:"Shadow Flayers", f:"warbands", p:"night-lords", s:"traitor", kind:"warband", n:"Command several Chaos cults that worship them."},
+  {id:"skulltakers", name:"Skulltakers", f:"warbands", p:"world-eaters", s:"traitor", kind:"warband", n:"Zhufor’s warband, which fought at the Siege of Vraks. Some authors treat them as only loosely World Eaters."},
+  {id:"sons-of-slaughter", name:"Sons of Slaughter", f:"warbands", p:"world-eaters", s:"traitor", kind:"warband", n:"Once led by Khârn."},
+  {id:"voidbutchers", name:"Voidbutchers", f:"warbands", p:"world-eaters", s:"traitor", kind:"warband", n:"One of the warbands born from the Battle of Skalathrax, which shattered the Legion."},
+  {id:"hounds-jaws", name:"Hound’s Jaws", f:"warbands", p:"world-eaters", s:"traitor", kind:"warband"},
+  {id:"riven", name:"Riven", f:"warbands", p:"world-eaters", s:"traitor", kind:"warband", n:"Post-Heresy warband that joined the Black Legion.", lex:"Riven (Warband)"},
+  {id:"harbingers", name:"The Harbingers", f:"warbands", p:"death-guard", s:"traitor", kind:"plague", n:"One of the Death Guard’s seven Plague Companies.", lex:"Harbingers"},
+  {id:"inexorable", name:"The Inexorable", f:"warbands", p:"death-guard", s:"traitor", kind:"plague", n:"One of the Death Guard’s seven Plague Companies."},
+  {id:"mortarions-anvil", name:"Mortarion’s Anvil", f:"warbands", p:"death-guard", s:"traitor", kind:"plague", n:"The Third Plague Company. Defensive specialists who let foes break against their lines.", lex:"Mortarion's Anvil (3rd Plague Company)"},
+  {id:"wretched", name:"The Wretched", f:"warbands", p:"death-guard", s:"traitor", kind:"plague", n:"One of the Death Guard’s seven Plague Companies."},
+  {id:"poxmongers", name:"The Poxmongers", f:"warbands", p:"death-guard", s:"traitor", kind:"plague", n:"One of the Death Guard’s seven Plague Companies."},
+  {id:"ferrymen", name:"The Ferrymen", f:"warbands", p:"death-guard", s:"traitor", kind:"plague", n:"One of the Death Guard’s seven Plague Companies."},
+  {id:"mortarions-chosen-sons", name:"Mortarion’s Chosen Sons", f:"warbands", p:"death-guard", s:"traitor", kind:"plague", n:"The Seventh Plague Company: plague brewers and alchemists.", lex:"7th Plague Company"},
+  {id:"legion-host", name:"Legion Host", f:"warbands", p:"death-guard", s:"traitor", kind:"warband", n:"Warband of Death Guard origin led by Thagus Daravek."},
+  {id:"black-legion", name:"Black Legion", f:"warbands", p:"sons-of-horus", s:"traitor", kind:"renamed", c:["#151515","#c9a54a"], n:"The Sons of Horus, renamed by Ezekyle Abaddon. Spearhead of the Black Crusades."},
+  {id:"34th-host", name:"34th Host", f:"warbands", p:"word-bearers", s:"traitor", kind:"warband", n:"Word Bearers Host of Dark Apostle Jarulek and his successor Marduk."},
+
+  {id:"grey-knights", name:"Grey Knights", f:"secret", p:"emperor", c:["#a9b1b8","#2f4f8f"], n:"Raised in secret by Malcador on the Emperor’s orders during the Heresy, before the Second Founding. The 666th Chapter."},
+  {id:"unknown", name:"Gene-seed unrecorded", f:"f1", p:"emperor", s:"group", c:["#6b7280","#3f4652"], n:"Chapters whose progenitor Legion is unknown or disputed, plus Primaris Chapters whose gene-line isn’t tracked here."},
+
+  // Second Founding
+  {id:"angels-of-absolution", name:"Angels of Absolution", f:"f2", p:"dark-angels", c:["#e3dccb","#1f3d2b"]},
+  {id:"angels-of-redemption", name:"Angels of Redemption", f:"f2", p:"dark-angels", c:["#1b1b1b","#8a1a1a"]},
+  {id:"angels-of-vengeance", name:"Angels of Vengeance", f:"f2", p:"dark-angels"},
+  {id:"marauders", name:"Marauders", f:"f2", p:"white-scars", lex:"Marauders (Chapter)"},
+  {id:"rampagers", name:"Rampagers", f:"f2", p:"white-scars"},
+  {id:"wolf-brothers", name:"Wolf Brothers", f:"f2", p:"space-wolves", s:"lost", n:"The only Chapter split from the Space Wolves Legion. Later disbanded."},
+  {id:"black-templars", name:"Black Templars", f:"f2", p:"imperial-fists", c:["#151515","#e8e6e0"], n:"A crusading Chapter that never fully adopted the Codex Astartes."},
+  {id:"crimson-fists", name:"Crimson Fists", f:"f2", p:"imperial-fists", c:["#1e408c","#b5211f"]},
+  {id:"excoriators", name:"Excoriators", f:"f2", p:"imperial-fists"},
+  {id:"fists-exemplar", name:"Fists Exemplar", f:"f2", p:"imperial-fists"},
+  {id:"angels-encarmine", name:"Angels Encarmine", f:"f2", p:"blood-angels"},
+  {id:"angels-sanguine", name:"Angels Sanguine", f:"f2", p:"blood-angels"},
+  {id:"angels-vermillion", name:"Angels Vermillion", f:"f2", p:"blood-angels"},
+  {id:"blood-drinkers", name:"Blood Drinkers", f:"f2", p:"blood-angels", c:["#7a1a2a","#e3e0d8"]},
+  {id:"flesh-tearers", name:"Flesh Tearers", f:"f2", p:"blood-angels", c:["#8b1515","#171717"]},
+  {id:"red-talons", name:"Red Talons", f:"f2", p:"iron-hands"},
+  {id:"brazen-claws", name:"Brazen Claws", f:"f2", p:"iron-hands"},
+  {id:"iron-lords", name:"Iron Lords", f:"f2", p:"iron-hands"},
+  {id:"novamarines", name:"Novamarines", f:"f2", p:"ultramarines"},
+  {id:"patriarchs-of-ulixis", name:"Patriarchs of Ulixis", f:"f2", p:"ultramarines"},
+  {id:"libators", name:"Libators", f:"f2", p:"ultramarines"},
+  {id:"genesis-chapter", name:"Genesis Chapter", f:"f2", p:"ultramarines"},
+  {id:"black-consuls", name:"Black Consuls", f:"f2", p:"ultramarines"},
+  {id:"iron-snakes", name:"Iron Snakes", f:"f2", p:"ultramarines"},
+  {id:"black-guard", name:"Black Guard", f:"f2", p:"raven-guard"},
+  {id:"revilers", name:"Revilers", f:"f2", p:"raven-guard"},
+
+  // Third Founding
+  {id:"angels-erythrean", name:"Angels Erythrean", f:"f3", p:"blood-angels"},
+  {id:"charnel-guard", name:"Charnel Guard", f:"f3", p:"blood-angels", n:"Third Founding is unconfirmed."},
+  {id:"death-wardens", name:"Death Wardens", f:"f3", p:"blood-angels", n:"Drawn from the Blood Angels and several of their successors."},
+  {id:"executioners", name:"Executioners", f:"f3", p:"imperial-fists", n:"Third Founding according to the Chapter’s own chronicles."},
+  {id:"scythes-of-the-emperor", name:"Scythes of the Emperor", f:"f3", p:"ultramarines", n:"Almost destroyed in the Second Tyrannic War."},
+  {id:"dark-paladins", name:"Dark Paladins", f:"f3", p:"unknown", s:"lost", n:"Destroyed by the Necrons in M41."},
+
+  // Fourth Founding
+  {id:"halo-brethren", name:"Halo Brethren", f:"f4", p:"unknown"},
+  {id:"sable-swords", name:"Sable Swords", f:"f4", p:"unknown", n:"Sources conflict: another places their founding in M41."},
+  {id:"tome-keepers", name:"Tome Keepers", f:"f4", p:"ultramarines"},
+
+  // Eighth / Ninth
+  {id:"angels-revenant", name:"Angels Revenant", f:"f8", p:"ultramarines", n:"Nearly destroyed by the Necrons of the Maynarkh Dynasty."},
+  {id:"mantis-warriors", name:"Mantis Warriors", f:"f8", p:"white-scars", n:"Eighth Founding is unconfirmed."},
+  {id:"angels-resplendent", name:"Angels Resplendent", f:"f9", p:"blood-angels", n:"Later renamed the Angels Penitent."},
+
+  // Thirteenth (Dark) Founding
+  {id:"exorcists", name:"Exorcists", f:"f13", p:"imperial-fists"},
+  {id:"death-spectres", name:"Death Spectres", f:"f13", p:"raven-guard", n:"Genetic drift turns their initiates albino."},
+
+  // Seventeenth
+  {id:"sons-of-pertinax", name:"Sons of Pertinax", f:"f17", p:"imperial-fists", n:"Imperial Fists descent is speculated. The Chapter renames itself after each Chapter Master."},
+
+  // Twenty-First (Cursed) Founding
+  {id:"lamenters", name:"Lamenters", f:"f21", p:"blood-angels", c:["#e3c22b","#7b1616"], n:"Rebelled in the Badab War, then sent on a crusade of penance."},
+  {id:"fire-hawks", name:"Fire Hawks", f:"f21", p:"ultramarines", s:"lost", n:"Ultramarines descent is most likely. Lost in the Warp."},
+  {id:"black-dragons", name:"Black Dragons", f:"f21", p:"salamanders", c:["#131313","#c0c0c0"], n:"Mutation grows bony crests and blades from their bodies."},
+  {id:"sons-of-antaeus", name:"Sons of Antaeus", f:"f21", p:"ultramarines"},
+  {id:"blood-gorgons", name:"Blood Gorgons", f:"f21", p:"unknown", s:"renegade", n:"Turned traitor within a generation of their founding."},
+  {id:"flame-falcons", name:"Flame Falcons", f:"f21", p:"unknown", s:"renegade", n:"Declared Excommunicate Traitoris after extreme corruption and destroyed by the Grey Knights."},
+  {id:"minotaurs", name:"Minotaurs", f:"f21", p:"unknown", c:["#b48a2c","#3a2a1b"]},
+
+  // Tenth
+  {id:"astral-claws", name:"Astral Claws", f:"f10", p:"unknown", s:"renegade", n:"Tenth Founding is unconfirmed. Led the secession that began the Badab War; the survivors became the Red Corsairs."},
+
+  // By edict
+  {id:"sons-of-medusa", name:"Sons of Medusa", f:"edict", p:"iron-hands", n:"Ratified by unprecedented edict in 011.M37, outside any Founding."},
+
+  // Twenty-Third (Sentinel) Founding
+  {id:"marines-errant", name:"Marines Errant", f:"f23", p:"unknown"},
+  {id:"imperial-harbingers", name:"Imperial Harbingers", f:"f23", p:"unknown"},
+  {id:"star-phantoms", name:"Star Phantoms", f:"f23", p:"unknown"},
+  {id:"celestial-lions", name:"Celestial Lions", f:"f23", p:"unknown", c:["#c8a33a","#7a1414"]},
+  {id:"steel-cobras", name:"Steel Cobras", f:"f23", p:"unknown"},
+
+  // Twenty-Fourth / Fifth / Sixth
+  {id:"hospitallers", name:"Hospitallers", f:"f24", p:"imperial-fists"},
+  {id:"fire-angels", name:"Fire Angels", f:"f25", p:"unknown"},
+  {id:"emperors-spears", name:"Emperor’s Spears", f:"f25", p:"unknown"},
+  {id:"star-scorpions", name:"Star Scorpions", f:"f25", p:"unknown", s:"renegade", n:"Thought lost in the Warp; in truth fell to Chaos as the warband called the Pure."},
+  {id:"mentor-legion", name:"Mentor Legion", f:"f26", p:"unknown", n:"Raised to replace the Star Scorpions, reportedly from new genetic stock in Terra’s genebanks."},
+
+  // Ultima Founding
+  {id:"silver-templars", name:"Silver Templars", f:"ultima", p:"unknown", n:"Primaris Chapter of the Ultima Founding."},
+  {id:"necropolis-hawks", name:"Necropolis Hawks", f:"ultima", p:"unknown", n:"Primaris Chapter of the Ultima Founding."},
+
+  // Founding unrecorded
+  {id:"raptors", name:"Raptors", f:"unrec", p:"raven-guard", c:["#4b5a3a","#c2a36a"], n:"Sources conflict: some list them as Second Founding, another as a later one.", lex:"Raptors (Chapter)", fan:"Raptors", d4:"Raptors"},
+  {id:"carcharodons", name:"Carcharodons", f:"unrec", p:"raven-guard", c:["#6c737a","#2b2b2b"], n:"Origin is disputed; most often linked to the Raven Guard."},
+  {id:"silver-skulls", name:"Silver Skulls", f:"unrec", p:"ultramarines", c:["#b8bec4","#9c1b1b"], n:"Listed as a later Founding; one source names the Ultramarines as progenitor."},
+  {id:"howling-griffons", name:"Howling Griffons", f:"unrec", p:"ultramarines", n:"Founded in M33; Founding number unstated."},
+  {id:"marines-malevolent", name:"Marines Malevolent", f:"unrec", p:"unknown", n:"Founded in M32; Founding number unstated."},
+  {id:"relictors", name:"Relictors", f:"unrec", p:"unknown", n:"Founded in M36; Founding number unstated."},
+  {id:"crimson-sabres", name:"Crimson Sabres", f:"unrec", p:"unknown", s:"renegade", n:"Founding and progenitor unknown; their earliest records date to the dawn of M36. Declared renegade in M41."},
+  {id:"blood-ravens", name:"Blood Ravens", f:"unrec", p:"unknown", c:["#7a1414","#e6e2d8"], n:"Both Founding and gene-seed are unknown, even to the Chapter itself."},
+
+  // Fallen to Chaos
+  {id:"red-corsairs", name:"Red Corsairs", f:"fallen", p:"astral-claws", s:"traitor", kind:"renegade", c:["#8f1b1b","#1a1a1a"], n:"Survivors of the Astral Claws under Huron Blackheart, now a vast pirate fleet."},
+  {id:"crimson-slaughter", name:"Crimson Slaughter", f:"fallen", p:"crimson-sabres", s:"traitor", kind:"renegade", c:["#8a1a1a","#c9a54a"], n:"The Crimson Sabres, transformed by the Warp after being declared renegade."}
+];
+
+/* ============================ setup ============================ */
+const COLW = 240, ROWH = 34, BW = 196, PADT = 84;
+let NC = COLS.length, colPos = {};
+// Era columns (traitor warbands, fallen Chapters) hold only traitors, so they drop out when traitors are hidden
+// Works out which nodes are visible under the loyalist/traitor filters.
+// A hidden node still appears, dimmed, when it is needed to connect a visible descendant.
+const selfShown = n => n.s === "root" || (n.s === "traitor" ? showTraitors : n.s === "renegade" ? true : showLoyalists);
+function computeCols() {
+  (function walk(n) {
+    let anyKid = false;
+    (kids[n.id] || []).forEach(k => { if (walk(k)) anyKid = true; });
+    n.vis = selfShown(n) || anyKid;
+    n.conn = n.vis && !selfShown(n);
+    return n.vis;
+  })(byId.emperor);
+  const used = new Set(NODES.filter(n => n.vis).map(n => n.f));
+  colPos = {}; NC = 0;
+  COLS.forEach(c => { if (used.has(c.id)) colPos[c.id] = NC++; });
+}
+const colIdx = Object.fromEntries(COLS.map((c, i) => [c.id, i]));
+const byId = Object.fromEntries(NODES.map(n => [n.id, n]));
+const kids = {};
+NODES.forEach(n => { n.s = n.s || "loyal"; if (n.p) (kids[n.p] = kids[n.p] || []).push(n); });
+const romanVal = r => r ? r.split("").reduce((a, ch, i, s) => { const v = {I:1,V:5,X:10}[ch], nx = {I:1,V:5,X:10}[s[i+1]] || 0; return a + (v < nx ? -v : v); }, 0) : 0;
+for (const id in kids) kids[id].sort((a, b) =>
+  (a.s === "group") - (b.s === "group") || colIdx[a.f] - colIdx[b.f] || romanVal(a.num) - romanVal(b.num) || a.name.localeCompare(b.name));
+NODES.forEach(n => { if (!n.c) { let a = byId[n.p]; while (a && !a.c) a = byId[a.p]; n.c = a ? a.c : ["#6b7280", "#3f4652"]; n.inherited = true; } });
+
+const collapsed = new Set();
+let showTraitors = true, showLoyalists = true, selected = null;
+const view = { k: 1, tx: 0, ty: 0 };
+
+const stage = document.getElementById("stage"), world = document.getElementById("world");
+const colsEl = document.getElementById("cols"), panel = document.getElementById("panel");
+const colLeft = i => i * COLW;
+const nodeL = n => colLeft(colPos[n.f]) + 16;
+const esc = s => String(s).replace(/[&<>"]/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[ch]));
+const visKids = n => (kids[n.id] || []).filter(k => k.vis);
+const countDesc = n => visKids(n).reduce((a, k) => a + 1 + countDesc(k), 0);
+const ancestors = n => { const a = []; let p = byId[n.p]; while (p) { a.push(p); p = byId[p.p]; } return a; };
+
+/* column header strip */
+colsEl.innerHTML = COLS.map(c => `<div class="col${c.id === "unrec" ? " unrec" : ""}"><b>${esc(c.name)}</b>${c.ep ? `<i>${esc(c.ep)}</i>` : "<i>&nbsp;</i>"}<span>${esc(c.date)}</span></div>`).join("");
+const colEls = [...colsEl.children];
+
+document.getElementById("names").innerHTML = NODES.filter(n => n.s !== "group").map(n => `<option value="${esc(n.name)}">`).join("");
+
+/* ============================ layout + render ============================ */
+let laid = [], totalH = 0;
+function layout() {
+  laid = []; let row = 0;
+  (function walk(n) {
+    const vk = collapsed.has(n.id) ? [] : visKids(n);
+    if (!vk.length) n.y = PADT + row++ * ROWH;
+    else { vk.forEach(walk); n.y = (vk[0].y + vk[vk.length - 1].y) / 2; }
+    n.open = vk.length > 0;
+    laid.push(n);
+  })(byId.emperor);
+  totalH = PADT + row * ROWH + 40;
+}
+
+function shieldMarkup(n) {
+  const [a, b] = n.c;
+  const img = heraldryUrl(n);
+  return `<path d="M0 0H10V24C6 22 0 18 0 10Z" fill="${a}"/><path d="M10 0H20V10C20 18 14 22 10 24Z" fill="${b}"/>` +
+    (img ? `<image href="${esc(img)}" x="-1" y="-1" width="22" height="26" preserveAspectRatio="xMidYMid meet" onerror="this.remove()"/>` : "") +
+    `<path class="sh-o" d="M0 0H20V10C20 18 14 22 10 24C6 22 0 18 0 10Z"/>`;
+}
+function heraldryUrl(n) {
+  if (HERALDRY[n.id]) return HERALDRY[n.id];
+  if (HERALDRY_PATTERN && n.s !== "group" && n.s !== "root") return HERALDRY_PATTERN.replace("{id}", n.id);
+  return "";
+}
+
+function render() {
+  computeCols();
+  layout();
+  const W = NC * COLW;
+  let out = "";
+  COLS.forEach(c => {
+    if (!(c.id in colPos)) return;
+    const i = colPos[c.id];
+    out += c.id === "unrec"
+      ? `<rect class="band unrec" x="${colLeft(i) + 4}" y="0" width="${COLW - 8}" height="${totalH}" rx="6"/>`
+      : `<rect class="band${i % 2 ? " alt" : ""}" x="${colLeft(i)}" y="0" width="${COLW}" height="${totalH}"/>`;
+  });
+  for (const n of laid) {
+    if (!n.open) continue;
+    const s = nodeL(n) + BW;
+    for (const k of visKids(n)) {
+      const cL = nodeL(k);
+      out += `<path class="edge${k.s === "traitor" ? " to-traitor" : ""}" d="M${s} ${n.y}H${cL - 30}C${cL - 14} ${n.y} ${cL - 14} ${k.y} ${cL - 2} ${k.y}"/>`;
+    }
+  }
+  for (const n of laid) {
+    const L = nodeL(n), has = visKids(n).length > 0;
+    const cls = ["node", n.s, n.num ? "legion" : "", n.conn ? "conn" : "", n.id === selected ? "sel" : ""].join(" ");
+    const count = has && collapsed.has(n.id) ? `<tspan class="count"> (+${countDesc(n)})</tspan>` : "";
+    const isGroup = n.s === "group";
+    out += `<g class="${cls}" data-id="${n.id}" transform="translate(${L},${n.y})" tabindex="0" role="button" aria-label="${esc(n.name)}${has ? (collapsed.has(n.id) ? ", collapsed" : ", expanded") : ""}">` +
+      `<rect class="hit" x="-6" y="-15" width="${BW + 10}" height="30" rx="4"/>` +
+      (isGroup ? "" : `<g transform="translate(4,-12)">${shieldMarkup(n)}</g>`) +
+      `<text class="lbl" x="${isGroup ? 8 : 32}" y="1" text-anchor="start">${esc(n.name)}${count}</text>` +
+      (has ? `<g class="knob" data-act="toggle" transform="translate(${BW - 8},0)"><circle r="8"/><text y="0">${collapsed.has(n.id) ? "+" : "−"}</text></g>` : "") +
+      `</g>`;
+  }
+  world.innerHTML = out;
+  world.dataset.w = W;
+}
+
+function apply() {
+  world.setAttribute("transform", `translate(${view.tx},${view.ty}) scale(${view.k})`);
+  colEls.forEach((el, j) => {
+    const id = COLS[j].id;
+    el.hidden = !(id in colPos);
+    if (el.hidden) return;
+    const i = colPos[id], w = COLW * view.k;
+    el.style.left = (view.tx + colLeft(i) * view.k) + "px";
+    el.style.width = w + "px";
+    el.classList.toggle("narrow", w < 150);
+    el.classList.toggle("tiny", w < 70);
+  });
+}
+
+/* ============================ actions ============================ */
+function toggle(id) {
+  const n = byId[id], before = n.y;
+  collapsed.has(id) ? collapsed.delete(id) : collapsed.add(id);
+  render();
+  view.ty -= (n.y - before) * view.k;
+  apply();
+  const el = world.querySelector(`[data-id="${id}"]`); if (el) el.focus({ preventScroll: true });
+}
+
+function reveal(n) {
+  computeCols();
+  if (!n.vis) { if (n.s === "traitor") setTraitors(true); else setLoyalists(true); }
+  ancestors(n).forEach(a => collapsed.delete(a.id));
+}
+
+function centerOn(n) {
+  const r = stage.getBoundingClientRect();
+  const panelW = panel.classList.contains("open") && r.width > 700 ? panel.offsetWidth : 0;
+  const mobilePanel = panel.classList.contains("open") && r.width <= 700 ? panel.offsetHeight : 0;
+  const cx = nodeL(n) + BW / 2;
+  view.tx = (r.width - panelW) / 2 - cx * view.k;
+  view.ty = (r.height - mobilePanel + 40) / 2 - n.y * view.k;
+  apply();
+}
+
+function select(id, { center = false, hash = true } = {}) {
+  const n = byId[id]; if (!n) return;
+  reveal(n);
+  selected = id;
+  render();
+  showPanel(n);
+  if (center) centerOn(n); else apply();
+  if (hash && location.hash.slice(1) !== id) location.hash = id;
+}
+
+function wikiLinks(n) {
+  const t = s => encodeURIComponent(s.replace(/’/g, "'").replace(/ /g, "_")).replace(/%2F/g, "/");
+  const lex = n.lex || n.name, fan = n.fan || n.name, d4 = n.d4 || n.name;
+  return [
+    { label: "Lexicanum", sub: "wh40k.lexicanum.com", url: `https://wh40k.lexicanum.com/wiki/${t(lex)}` },
+    { label: "Warhammer 40k Wiki", sub: "warhammer40k.fandom.com", url: `https://warhammer40k.fandom.com/wiki/${t(fan)}` },
+    { label: "1d4chan", sub: "1d4chan.org", url: `https://1d4chan.org/wiki/${t(d4)}` },
+    { label: "Search Lexicanum", sub: "If the page above is a disambiguation", url: `https://wh40k.lexicanum.com/mediawiki/index.php?search=${encodeURIComponent(n.name.replace(/’/g, "'"))}` }
+  ];
+}
+
+function statusText(n) {
+  const kind = n.num ? "Legion" : "Chapter";
+  if (n.s === "traitor" && !n.num) return { plague: "Death Guard Plague Company", renegade: "Renegade Chapter, fallen to Chaos", renamed: "Traitor Legion, renamed" }[n.kind] || "Traitor warband";
+  return { loyal: `Loyal ${kind}`, traitor: "Traitor Legion", lost: `${kind}, lost or disbanded`, renegade: "Renegade, fallen or destroyed",
+           expunged: "Records expunged", root: "Progenitor of the Astartes", group: "Grouping, not a Chapter" }[n.s];
+}
+
+function showPanel(n) {
+  const col = COLS[colIdx[n.f]], parent = byId[n.p];
+  const vk = kids[n.id] || [];
+  const img = heraldryUrl(n);
+  const mark = n.num || n.name.split(/\s+/).filter(w => !/^(of|the)$/i.test(w)).map(w => w[0]).join("").slice(0, 2);
+  const big = n.s === "group" ? "" : `<div class="shield">
+      <svg viewBox="-1 -1 22 26" aria-hidden="true">${shieldMarkup({ ...n, id: "__none" }).replace(/<image[^>]*>/, "")}
+        <text x="10" y="11.5" text-anchor="middle" dominant-baseline="middle" font-family="Cinzel, serif" font-weight="700" font-size="${mark.length > 3 ? 5 : 6.5}" fill="#fff" stroke="#000" stroke-width=".9" paint-order="stroke">${esc(mark)}</text></svg>
+      ${img ? `<img src="${esc(img)}" alt="Heraldry of the ${esc(n.name)}" onerror="this.remove()">` : ""}
+    </div>`;
+  panel.innerHTML = `
+    <button class="btn close" id="closePanel" aria-label="Close details">Close</button>
+    <div class="crest">${big}
+      <div><h2>${esc(n.name)}</h2><div class="status ${n.s}">${statusText(n)}</div></div>
+    </div>
+    <dl>
+      ${n.s === "root" ? "" : `<dt>${col.era ? "Era" : "Founding"}</dt><dd>${esc(col.name)}${col.ep ? `, ${esc(col.ep.toLowerCase().startsWith("the") ? col.ep : col.ep)}` : ""}<br><span style="color:var(--muted)">${esc(col.date)}</span>${col.note ? `<br><span style="color:var(--muted);font-size:.88rem">${esc(col.note)}</span>` : ""}</dd>`}
+      ${n.num ? `<dt>Legion</dt><dd>${n.num}</dd>` : ""}
+      ${parent && n.s !== "group" ? `<dt>${n.s === "traitor" && !n.num ? "Origin" : "Gene-seed"}</dt><dd><button class="linkish" data-go="${parent.id}">${esc(parent.name)}</button></dd>` : ""}
+      ${vk.length ? `<dt>${n.s === "group" ? "Chapters" : n.s === "traitor" ? "Offshoots" : "Successors"}</dt><dd class="kids">${vk.map(k => `<button class="linkish" data-go="${k.id}">${esc(k.name)}</button>`).join("")}</dd>` : ""}
+    </dl>
+    ${n.n ? `<p class="note">${esc(n.n)}</p>` : ""}
+    ${n.s === "group" ? "" : `<h3>Read more</h3><div class="wikis">${wikiLinks(n).map(l => `<a href="${l.url}" target="_blank" rel="noopener noreferrer">${l.label}<small>${esc(l.sub)}</small></a>`).join("")}</div>`}
+    ${HERALDRY_SOURCE.url && img ? `<p class="fine">Heraldry: <a href="${esc(HERALDRY_SOURCE.url)}" target="_blank" rel="noopener noreferrer">${esc(HERALDRY_SOURCE.label || HERALDRY_SOURCE.url)}</a></p>` : ""}
+    ${n.s === "group" ? "" : `<p class="fine">${img ? "" : "Shield shows an approximate colour scheme, not the badge. "}${n.inherited ? "Colours inherited from the progenitor until filled in." : ""}</p>`}`;
+  panel.classList.add("open");
+}
+
+function closePanel() {
+  panel.classList.remove("open"); selected = null; render(); apply();
+  history.replaceState(null, "", location.pathname + location.search);
+}
+
+function setTraitors(on) {
+  showTraitors = on;
+  const b = document.getElementById("traitors");
+  b.setAttribute("aria-pressed", String(on));
+  b.textContent = on ? "Traitors shown" : "Traitors hidden";
+}
+
+function setLoyalists(on) {
+  showLoyalists = on;
+  const b = document.getElementById("loyalists");
+  b.setAttribute("aria-pressed", String(on));
+  b.textContent = on ? "Loyalists shown" : "Loyalists hidden";
+}
+
+function refilter() {
+  computeCols();
+  if (selected && !byId[selected].vis) closePanel(); else { render(); apply(); }
+}
+
+function fit() {
+  const r = stage.getBoundingClientRect(), W = NC * COLW;
+  view.k = Math.max(0.15, Math.min(r.width / (W + 40), (r.height - 10) / totalH, 1));
+  view.tx = (r.width - W * view.k) / 2;
+  view.ty = 0;
+  apply();
+}
+
+function initialView() {
+  const r = stage.getBoundingClientRect(), W = NC * COLW;
+  view.k = Math.max(0.6, Math.min(1, (r.height - 10) / totalH));
+  if (r.width < 700) view.k = 0.7;
+  view.tx = 10;   // origin pinned to the left edge
+  view.ty = 0;
+  apply();
+}
+
+function zoomAt(cx, cy, f) {
+  const r = stage.getBoundingClientRect(), x = cx - r.left, y = cy - r.top;
+  const nk = Math.max(0.15, Math.min(2.4, view.k * f));
+  view.tx = x - (x - view.tx) * nk / view.k;
+  view.ty = y - (y - view.ty) * nk / view.k;
+  view.k = nk; apply();
+}
+
+/* ============================ input ============================ */
+const pts = new Map(); let moved = 0, pinch = null;
+stage.addEventListener("pointerdown", e => {
+  if (e.target.closest("#panel")) return;
+  pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  moved = 0;
+  if (pts.size === 2) {
+    const [a, b] = [...pts.values()];
+    pinch = { d: Math.hypot(a.x - b.x, a.y - b.y), k: view.k };
+  }
+});
+stage.addEventListener("pointermove", e => {
+  if (!pts.has(e.pointerId)) return;
+  const prev = pts.get(e.pointerId), cur = { x: e.clientX, y: e.clientY };
+  pts.set(e.pointerId, cur);
+  if (pts.size === 1) {
+    const dx = cur.x - prev.x, dy = cur.y - prev.y;
+    moved += Math.abs(dx) + Math.abs(dy);
+    if (moved > 4) {
+      if (!stage.hasPointerCapture(e.pointerId)) { stage.setPointerCapture(e.pointerId); stage.classList.add("dragging"); }
+      view.tx += dx; view.ty += dy; apply();
+    }
+  } else if (pts.size === 2 && pinch) {
+    moved = 99;
+    const [a, b] = [...pts.values()];
+    const d = Math.hypot(a.x - b.x, a.y - b.y);
+    zoomAt((a.x + b.x) / 2, (a.y + b.y) / 2, (pinch.k * d / pinch.d) / view.k);
+  }
+});
+const endPtr = e => { pts.delete(e.pointerId); if (pts.size < 2) pinch = null; stage.classList.remove("dragging"); };
+stage.addEventListener("pointerup", endPtr);
+stage.addEventListener("pointercancel", endPtr);
+stage.addEventListener("wheel", e => {
+  if (e.target.closest("#panel")) return;
+  e.preventDefault();
+  zoomAt(e.clientX, e.clientY, Math.exp(-e.deltaY * (e.ctrlKey ? 0.01 : 0.0015)));
+}, { passive: false });
+
+world.addEventListener("click", e => {
+  if (moved > 4) return;
+  const node = e.target.closest(".node"); if (!node) return;
+  if (e.target.closest('[data-act="toggle"]')) toggle(node.dataset.id);
+  else select(node.dataset.id);
+});
+world.addEventListener("keydown", e => {
+  const node = e.target.closest(".node"); if (!node) return;
+  const id = node.dataset.id;
+  if (e.key === "Enter") { e.preventDefault(); select(id); }
+  else if (e.key === " ") { e.preventDefault(); if (visKids(byId[id]).length) toggle(id); }
+});
+panel.addEventListener("click", e => {
+  const go = e.target.closest("[data-go]");
+  if (go) select(go.dataset.go, { center: true });
+  if (e.target.closest("#closePanel")) closePanel();
+});
+document.addEventListener("keydown", e => { if (e.key === "Escape" && panel.classList.contains("open")) closePanel(); });
+
+document.getElementById("search").addEventListener("change", e => {
+  const q = e.target.value.trim().toLowerCase().replace(/'/g, "’"); if (!q) return;
+  const n = NODES.find(n => n.name.toLowerCase() === q) || NODES.find(n => n.name.toLowerCase().includes(q));
+  if (n) { select(n.id, { center: true }); e.target.value = ""; }
+});
+document.getElementById("traitors").addEventListener("click", () => {
+  setTraitors(!showTraitors);
+  if (!showTraitors && !showLoyalists) setLoyalists(true);   // never hide everything
+  refilter();
+});
+document.getElementById("loyalists").addEventListener("click", () => {
+  setLoyalists(!showLoyalists);
+  if (!showTraitors && !showLoyalists) setTraitors(true);
+  refilter();
+});
+document.getElementById("expandAll").addEventListener("click", () => { collapsed.clear(); render(); apply(); });
+document.getElementById("collapseAll").addEventListener("click", () => {
+  NODES.forEach(n => { if (n.id !== "emperor" && (kids[n.id] || []).length) collapsed.add(n.id); });
+  render(); initialView();
+});
+document.getElementById("zoomIn").addEventListener("click", () => { const r = stage.getBoundingClientRect(); zoomAt(r.left + r.width / 2, r.top + r.height / 2, 1.25); });
+document.getElementById("zoomOut").addEventListener("click", () => { const r = stage.getBoundingClientRect(); zoomAt(r.left + r.width / 2, r.top + r.height / 2, 0.8); });
+document.getElementById("fit").addEventListener("click", fit);
+
+window.addEventListener("hashchange", () => {
+  const id = location.hash.slice(1);
+  if (byId[id] && id !== selected) select(id, { center: true, hash: false });
+});
+
+/* ============================ boot ============================ */
+render();
+initialView();
+const start = location.hash.slice(1);
+if (byId[start]) select(start, { center: true, hash: false });
+</script>
+</body>
+</html>
