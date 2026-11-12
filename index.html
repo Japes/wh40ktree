@@ -12,6 +12,7 @@
   --bg:#e8eaee; --surface:#f5f6f8; --ink:#1a2130; --muted:#5b6474; --brass:#86662a;
   --line:rgba(134,102,42,.55); --band-a:rgba(26,33,48,.045); --band-b:rgba(26,33,48,0);
   --traitor:#9b2f2c; --sel:rgba(134,102,42,.18); --shadow:rgba(20,26,38,.18);
+  --star-rgb:38,46,68; --star-a:.5; --neb1:rgba(120,96,170,.10); --neb2:rgba(70,120,180,.09); --neb3:rgba(134,102,42,.06);
   --display:"Cinzel", "Trajan Pro", "Times New Roman", serif;
   --ui:"Alegreya Sans", "Gill Sans", "Segoe UI", system-ui, sans-serif;
   box-sizing:border-box; padding-top:env(safe-area-inset-top,0px); padding-bottom:env(safe-area-inset-bottom,0px);
@@ -22,6 +23,7 @@
     --bg:#121821; --surface:#1a2230; --ink:#e6dec9; --muted:#939cab; --brass:#c9a35c;
     --line:rgba(201,163,92,.42); --band-a:rgba(230,222,201,.035); --band-b:rgba(230,222,201,0);
     --traitor:#d26a63; --sel:rgba(201,163,92,.16); --shadow:rgba(0,0,0,.45);
+    --star-rgb:232,226,210; --star-a:1; --neb1:rgba(110,70,170,.20); --neb2:rgba(40,100,160,.18); --neb3:rgba(201,163,92,.07);
     color-scheme:dark;
   }
 }
@@ -29,6 +31,7 @@
   --bg:#121821; --surface:#1a2230; --ink:#e6dec9; --muted:#939cab; --brass:#c9a35c;
   --line:rgba(201,163,92,.42); --band-a:rgba(230,222,201,.035); --band-b:rgba(230,222,201,0);
   --traitor:#d26a63; --sel:rgba(201,163,92,.16); --shadow:rgba(0,0,0,.45);
+  --star-rgb:232,226,210; --star-a:1; --neb1:rgba(110,70,170,.20); --neb2:rgba(40,100,160,.18); --neb3:rgba(201,163,92,.07);
   color-scheme:dark;
 }
 *,*::before,*::after{box-sizing:inherit}
@@ -57,9 +60,9 @@ header{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem 1.2rem;padding:.
 #stage #panel{-webkit-user-select:text;user-select:text;cursor:auto}
 #stage.dragging{cursor:grabbing}
 svg#tree{position:absolute;inset:0;width:100%;height:100%;display:block}
-#cols{position:absolute;top:0;left:0;right:0;height:64px;pointer-events:none;z-index:2;background:linear-gradient(var(--bg) 70%,transparent)}
-.col{position:absolute;top:0;height:64px;padding:.5rem .7rem 0;border-left:1px solid var(--line);overflow:hidden;white-space:nowrap}
-.col b{display:block;font-family:var(--display);font-weight:700;font-size:.9rem;letter-spacing:.03em;color:var(--brass);overflow:hidden;text-overflow:ellipsis}
+#cols{position:absolute;top:0;left:0;right:0;height:84px;pointer-events:none;z-index:2;background:linear-gradient(var(--bg) 70%,transparent)}
+.col{position:absolute;top:0;height:84px;padding:.5rem .7rem 0;border-left:1px solid var(--line);overflow:hidden;white-space:nowrap}
+.col b{display:block;font-family:var(--display);font-weight:700;font-size:.9rem;line-height:1.2;letter-spacing:.03em;color:var(--brass);overflow:hidden;text-overflow:ellipsis}
 .col i{display:block;font-size:.8rem;color:var(--ink);overflow:hidden;text-overflow:ellipsis}
 .col span{display:block;font-size:.75rem;color:var(--muted)}
 .col.narrow i,.col.narrow span{display:none}
@@ -75,7 +78,8 @@ svg#tree{position:absolute;inset:0;width:100%;height:100%;display:block}
 .node .hit{fill:transparent;rx:4}
 .node:hover .hit,.node:focus-visible .hit{fill:var(--sel)}
 .node.sel .hit{fill:var(--sel);stroke:var(--brass);stroke-width:1}
-.node text.lbl{font-family:var(--ui);font-size:14px;fill:var(--ink);dominant-baseline:middle}
+.node text.lbl{font-family:var(--ui);font-size:14px;fill:var(--ink);dominant-baseline:middle;paint-order:stroke;stroke:var(--bg);stroke-width:3.5px;stroke-linejoin:round;stroke-opacity:.85}
+#sky{position:absolute;inset:0;pointer-events:none;background-repeat:repeat,repeat,repeat,no-repeat,no-repeat,no-repeat}
 .node.legion text.lbl{font-weight:700}
 .node.root text.lbl{font-family:var(--display);font-weight:700;font-size:15px;fill:var(--brass)}
 .node.group text.lbl{font-style:italic;fill:var(--muted)}
@@ -149,6 +153,7 @@ svg#tree{position:absolute;inset:0;width:100%;height:100%;display:block}
 </header>
 
 <div id="stage">
+  <div id="sky" aria-hidden="true"></div>
   <svg id="tree" aria-label="Family tree of Space Marine Legions and Chapters"><g id="world"></g></svg>
   <div id="cols" aria-hidden="true"></div>
   <div class="hint">Drag to pan, scroll or pinch to zoom. Click a ± knob to fold a branch.</div>
@@ -171,23 +176,23 @@ const HERALDRY_SOURCE = { label: "", url: "" }; // e.g. the archived database pa
 /* ===================== FOUNDINGS (oldest first) ===================== */
 const COLS = [
   {id:"origin", name:"Origin", ep:"", date:"M30"},
-  {id:"f1", name:"First Founding", ep:"The Legiones Astartes", date:"M29–M30"},
+  {id:"f1", name:"1st Founding", ep:"The Legiones Astartes", date:"M29–M30"},
   {id:"secret", name:"Outside the Foundings", ep:"Raised in secret", date:"M31"},
   {id:"warbands", name:"Traitor warbands", ep:"Splintered after the Heresy", date:"M31 onward", era:true},
-  {id:"f2", name:"Second Founding", ep:"The Legions divided", date:"021.M31"},
-  {id:"f3", name:"Third Founding", ep:"Proposed by Rogal Dorn", date:"001.M32"},
-  {id:"f4", name:"Fourth Founding", ep:"After the War of the Beast", date:"546.M32"},
-  {id:"f8", name:"Eighth Founding", ep:"", date:"Mid-M34"},
-  {id:"f9", name:"Ninth Founding", ep:"", date:"Date unknown"},
-  {id:"f10", name:"Tenth Founding", ep:"", date:"Mid-M35", note:"Only some Chapters’ placement in this Founding is confirmed."},
-  {id:"f13", name:"Thirteenth Founding", ep:"The Dark Founding", date:"Late M35–early M36"},
-  {id:"f17", name:"Seventeenth Founding", ep:"", date:"Date unknown"},
-  {id:"f21", name:"Twenty-First Founding", ep:"The Cursed Founding", date:"991.M35", note:"Some sources date it before the Thirteenth; it’s shown here in numbered order."},
+  {id:"f2", name:"2nd Founding", ep:"The Legions divided", date:"021.M31"},
+  {id:"f3", name:"3rd Founding", ep:"Proposed by Rogal Dorn", date:"001.M32"},
+  {id:"f4", name:"4th Founding", ep:"After the War of the Beast", date:"546.M32"},
+  {id:"f8", name:"8th Founding", ep:"", date:"Mid-M34"},
+  {id:"f9", name:"9th Founding", ep:"", date:"Date unknown"},
+  {id:"f10", name:"10th Founding", ep:"", date:"Mid-M35", note:"Only some Chapters’ placement in this Founding is confirmed."},
+  {id:"f13", name:"13th Founding", ep:"The Dark Founding", date:"Late M35–early M36"},
+  {id:"f17", name:"17th Founding", ep:"", date:"Date unknown"},
+  {id:"f21", name:"21st Founding", ep:"The Cursed Founding", date:"991.M35", note:"Some sources date it before the 13th; it’s shown here in numbered order."},
   {id:"edict", name:"Ratified by edict", ep:"Outside the Foundings", date:"011.M37"},
-  {id:"f23", name:"Twenty-Third Founding", ep:"The Sentinel Founding", date:"Late M37–early M38"},
-  {id:"f24", name:"Twenty-Fourth Founding", ep:"", date:"Date unknown"},
-  {id:"f25", name:"Twenty-Fifth Founding", ep:"The Bastion Founding", date:"Late M40"},
-  {id:"f26", name:"Twenty-Sixth Founding", ep:"", date:"738.M41"},
+  {id:"f23", name:"23rd Founding", ep:"The Sentinel Founding", date:"Late M37–early M38"},
+  {id:"f24", name:"24th Founding", ep:"", date:"Date unknown"},
+  {id:"f25", name:"25th Founding", ep:"The Bastion Founding", date:"Late M40"},
+  {id:"f26", name:"26th Founding", ep:"", date:"738.M41"},
   {id:"ultima", name:"Ultima Founding", ep:"Primaris Chapters", date:"c. 999.M41"},
   {id:"unrec", name:"Founding unrecorded", ep:"Number or date lost", date:"Any era"},
   {id:"fallen", name:"Fallen to Chaos", ep:"Loyal Chapters turned renegade", date:"Mostly M41", era:true}
@@ -351,7 +356,7 @@ const NODES = [
 ];
 
 /* ============================ setup ============================ */
-const COLW = 240, ROWH = 34, BW = 196, PADT = 84;
+const COLW = 240, ROWH = 34, BW = 196, PADT = 104;
 let NC = COLS.length, colPos = {};
 // Era columns (traitor warbands, fallen Chapters) hold only traitors, so they drop out when traitors are hidden
 // Works out which nodes are visible under the loyalist/traitor filters.
@@ -392,23 +397,73 @@ const countDesc = n => visKids(n).reduce((a, k) => a + 1 + countDesc(k), 0);
 const ancestors = n => { const a = []; let p = byId[n.p]; while (p) { a.push(p); p = byId[p.p]; } return a; };
 
 /* column header strip */
-colsEl.innerHTML = COLS.map(c => `<div class="col${c.id === "unrec" ? " unrec" : ""}"><b>${esc(c.name)}</b>${c.ep ? `<i>${esc(c.ep)}</i>` : "<i>&nbsp;</i>"}<span>${esc(c.date)}</span></div>`).join("");
+// Gold heading on two rows: everything before the last word, then the last word
+const twoRows = s => { const i = s.lastIndexOf(" "); return i < 0 ? esc(s) + "<br>&nbsp;" : esc(s.slice(0, i)) + "<br>" + esc(s.slice(i + 1)); };
+colsEl.innerHTML = COLS.map(c => `<div class="col${c.id === "unrec" ? " unrec" : ""}"><b>${twoRows(c.name)}</b>${c.ep ? `<i>${esc(c.ep)}</i>` : "<i>&nbsp;</i>"}<span>${esc(c.date)}</span></div>`).join("");
 const colEls = [...colsEl.children];
 
 document.getElementById("names").innerHTML = NODES.filter(n => n.s !== "group").map(n => `<option value="${esc(n.name)}">`).join("");
 
 /* ============================ layout + render ============================ */
 let laid = [], totalH = 0;
+// Two intervals of rows clash when they are less than one row apart
+const clash = (a0, a1, b0, b1) => a0 < b1 + 1 && b0 < a1 + 1;
+function fits(prof, t, occ) {
+  for (const [c, ivs] of prof) {
+    const o = occ.get(c); if (!o) continue;
+    for (const [lo, hi] of ivs) for (const [olo, ohi] of o) if (clash(lo + t, hi + t, olo, ohi)) return false;
+  }
+  return true;
+}
+// Packs a subtree column by column. Returns its profile: for each column, the row
+// intervals it occupies (nodes plus the horizontal runs of its lines), relative to its root.
+// Siblings in different columns may share a row; the parent's own row is kept clear in every
+// column its lines cross, so a line never runs through a shield or name.
+function pack(n) {
+  const vk = collapsed.has(n.id) ? [] : visKids(n);
+  n._vk = vk; n.open = vk.length > 0;
+  const c0 = colPos[n.f];
+  if (!vk.length) { n._offs = []; return new Map([[c0, [[0, 0]]]]); }
+  const profs = vk.map(pack);
+  const maxC = Math.max(...vk.map(k => colPos[k.f]));
+  const attempt = C => {
+    const occ = new Map(), offs = [], last = new Map();
+    const add = (c, lo, hi) => { if (!occ.has(c)) occ.set(c, []); occ.get(c).push([lo, hi]); };
+    if (C !== null) for (let c = c0 + 1; c < maxC; c++) add(c, C, C);
+    vk.forEach((k, i) => {
+      const kc = colPos[k.f];
+      let t = last.has(kc) ? last.get(kc) + 1 : 0;
+      while (!fits(profs[i], t, occ)) t++;
+      offs.push(t); last.set(kc, t);
+      for (const [c, ivs] of profs[i]) for (const [lo, hi] of ivs) add(c, lo + t, hi + t);
+    });
+    const mid = (Math.min(...offs) + Math.max(...offs)) / 2;
+    return { occ, offs, mid, P: C === null ? mid : C };
+  };
+  let res = attempt(null);
+  if (maxC > c0 + 1) {
+    // Lines cross other columns: pick the parent row nearest the middle of its children
+    const m = Math.round(res.mid);
+    let best = null, score = Infinity;
+    for (let d = 0; d <= 16 && score > 0.5; d++) for (const C of d ? [m - d, m + d] : [m]) {
+      const r = attempt(C), s = Math.abs(C - r.mid);
+      if (s < score) { score = s; best = r; }
+    }
+    res = best;
+  }
+  n._offs = res.offs.map(t => t - res.P);
+  const prof = new Map([[c0, [[0, 0]]]]);
+  for (const [c, ivs] of res.occ) prof.set(c, (prof.get(c) || []).concat(ivs.map(([lo, hi]) => [lo - res.P, hi - res.P])));
+  return prof;
+}
 function layout() {
-  laid = []; let row = 0;
-  (function walk(n) {
-    const vk = collapsed.has(n.id) ? [] : visKids(n);
-    if (!vk.length) n.y = PADT + row++ * ROWH;
-    else { vk.forEach(walk); n.y = (vk[0].y + vk[vk.length - 1].y) / 2; }
-    n.open = vk.length > 0;
-    laid.push(n);
-  })(byId.emperor);
-  totalH = PADT + row * ROWH + 40;
+  laid = [];
+  pack(byId.emperor);
+  (function place(n, row) { n.row = row; laid.push(n); n._vk.forEach((k, i) => place(k, row + n._offs[i])); })(byId.emperor, 0);
+  let min = Infinity, max = -Infinity;
+  laid.forEach(n => { min = Math.min(min, n.row); max = Math.max(max, n.row); });
+  laid.forEach(n => n.y = PADT + (n.row - min) * ROWH);
+  totalH = PADT + (max - min + 1) * ROWH + 40;
 }
 
 function shieldMarkup(n) {
@@ -460,7 +515,23 @@ function render() {
   world.dataset.w = W;
 }
 
+// Keep the tree's edges from being dragged past the edges of the view.
+// When the tree is smaller than the view on an axis, it can move freely but never off-screen.
+function clampView() {
+  const r = stage.getBoundingClientRect();
+  const open = panel.classList.contains("open");
+  const vw = r.width - (open && r.width > 700 ? panel.offsetWidth : 0);
+  const vh = r.height - (open && r.width <= 700 ? panel.offsetHeight : 0);
+  const cw = NC * COLW * view.k, ch = totalH * view.k;
+  view.tx = Math.min(Math.max(view.tx, Math.min(0, vw - cw)), Math.max(0, vw - cw));
+  view.ty = Math.min(Math.max(view.ty, Math.min(0, vh - ch)), Math.max(0, vh - ch));
+}
+
 function apply() {
+  clampView();
+  // Star layers drift slower than the tree for a sense of depth; the nebulae stay put
+  const sx = view.tx, sy = view.ty;
+  sky.style.backgroundPosition = `${sx * .05}px ${sy * .05}px, ${sx * .12}px ${sy * .12}px, ${sx * .22}px ${sy * .22}px, 0 0, 0 0, 0 0`;
   world.setAttribute("transform", `translate(${view.tx},${view.ty}) scale(${view.k})`);
   colEls.forEach((el, j) => {
     const id = COLS[j].id;
@@ -686,12 +757,44 @@ document.getElementById("zoomIn").addEventListener("click", () => { const r = st
 document.getElementById("zoomOut").addEventListener("click", () => { const r = stage.getBoundingClientRect(); zoomAt(r.left + r.width / 2, r.top + r.height / 2, 0.8); });
 document.getElementById("fit").addEventListener("click", fit);
 
+window.addEventListener("resize", () => apply());
+
 window.addEventListener("hashchange", () => {
   const id = location.hash.slice(1);
   if (byId[id] && id !== selected) select(id, { center: true, hash: false });
 });
 
 /* ============================ boot ============================ */
+/* ============================ starfield ============================ */
+const sky = document.getElementById("sky");
+function starTile(size, count, rMin, rMax, aMin, aMax, seed, rgb, k, glow) {
+  let s = seed;
+  const rnd = () => (s = (s * 16807) % 2147483647) / 2147483647;
+  let c = "";
+  for (let i = 0; i < count; i++) {
+    const x = (rnd() * size).toFixed(1), y = (rnd() * size).toFixed(1);
+    const r = (rMin + rnd() * (rMax - rMin)).toFixed(2), a = ((aMin + rnd() * (aMax - aMin)) * k).toFixed(2);
+    if (glow) c += `<circle cx='${x}' cy='${y}' r='${(r * 3.2).toFixed(1)}' fill='rgba(${rgb},${(a * .12).toFixed(3)})'/>`;
+    c += `<circle cx='${x}' cy='${y}' r='${r}' fill='rgba(${rgb},${a})'/>`;
+  }
+  return `url("data:image/svg+xml,${encodeURIComponent(`<svg xmlns='http://www.w3.org/2000/svg' width='${size}' height='${size}'>${c}</svg>`)}")`;
+}
+function paintSky() {
+  const cs = getComputedStyle(document.documentElement);
+  const rgb = cs.getPropertyValue("--star-rgb").trim() || "232,226,210";
+  const k = parseFloat(cs.getPropertyValue("--star-a")) || 1;
+  sky.style.backgroundImage = [
+    starTile(420, 140, .35, .7, .10, .32, 11, rgb, k, false),   // distant dust
+    starTile(560, 55, .6, 1.0, .20, .50, 29, rgb, k, false),    // mid stars
+    starTile(760, 9, 1.0, 1.5, .45, .75, 47, rgb, k, true),     // a few bright ones
+    "radial-gradient(ellipse 55% 45% at 18% 28%, var(--neb1), transparent 70%)",
+    "radial-gradient(ellipse 50% 55% at 82% 72%, var(--neb2), transparent 70%)",
+    "radial-gradient(ellipse 35% 30% at 60% 15%, var(--neb3), transparent 70%)"
+  ].join(",");
+}
+paintSky();
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", paintSky);
+
 render();
 initialView();
 const start = location.hash.slice(1);
