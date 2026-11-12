@@ -113,12 +113,25 @@ svg#tree{position:absolute;inset:0;width:100%;height:100%;display:block}
 .linkish{background:none;border:0;padding:0;color:var(--brass);cursor:pointer;text-decoration:underline;text-underline-offset:2px;text-align:left}
 .kids{display:flex;flex-wrap:wrap;gap:.25rem .7rem}
 .note{max-width:62ch;margin:0 0 1.2rem}
+.note.aside{margin-top:-.6rem;font-size:.9rem;color:var(--muted)}
 #panel h3{font-family:var(--display);font-size:.95rem;font-weight:700;color:var(--brass);margin:1.2rem 0 .5rem;letter-spacing:.03em}
-.wikis{display:flex;flex-direction:column;gap:.45rem}
-.wikis a{display:block;border:1px solid var(--line);border-radius:4px;padding:.5rem .75rem;color:var(--ink);text-decoration:none}
+.wikis{display:flex;gap:.45rem}
+.wikis a{flex:1;min-width:0;text-align:center;border:1px solid var(--line);border-radius:4px;padding:.5rem .4rem;color:var(--ink);text-decoration:none;font-weight:500}
 .wikis a:hover{background:var(--sel)}
 .wikis a small{display:block;color:var(--muted);font-size:.82rem}
 .fine{font-size:.82rem;color:var(--muted);margin-top:1.2rem}
+
+/* ---------- feedback dialog ---------- */
+#fb{background:var(--surface);color:var(--ink);border:1px solid var(--line);border-radius:6px;padding:1.2rem 1.3rem;width:min(460px,calc(100% - 2rem));box-shadow:0 12px 40px var(--shadow)}
+#fb::backdrop{background:rgba(10,14,20,.55)}
+#fb h2{font-family:var(--display);font-size:1.15rem;margin:0 0 .3rem}
+#fb p.intro{margin:0 0 1rem;color:var(--muted);font-size:.9rem}
+#fb label{display:block;font-size:.88rem;color:var(--muted);margin:.7rem 0 .25rem}
+#fb select,#fb input,#fb textarea{width:100%;background:var(--bg);border:1px solid var(--line);border-radius:4px;padding:.45rem .6rem;font:inherit;color:inherit}
+#fb textarea{min-height:7rem;resize:vertical}
+#fb .row{display:flex;gap:.5rem;justify-content:flex-end;margin-top:1rem}
+#fb .btn.primary{background:var(--brass);color:var(--surface);border-color:var(--brass)}
+#fb .status{font-size:.88rem;color:var(--brass);margin-top:.6rem;min-height:1.2em}
 
 @media (max-width: 700px){
   header{padding:.6rem .8rem}
@@ -144,6 +157,7 @@ svg#tree{position:absolute;inset:0;width:100%;height:100%;display:block}
     <button class="btn" id="traitors" aria-pressed="true">Traitors shown</button>
     <button class="btn" id="expandAll">Expand all</button>
     <button class="btn" id="collapseAll">Legions only</button>
+    <button class="btn" id="feedbackBtn">Feedback</button>
     <div class="zoom">
       <button class="btn" id="zoomOut" aria-label="Zoom out">−</button>
       <button class="btn" id="fit">Fit</button>
@@ -160,6 +174,24 @@ svg#tree{position:absolute;inset:0;width:100%;height:100%;display:block}
   <aside id="panel" aria-live="polite" aria-label="Details"></aside>
 </div>
 
+<dialog id="fb" aria-labelledby="fbTitle">
+  <h2 id="fbTitle">Feedback</h2>
+  <p class="intro">Spotted a mistake, a missing Chapter, or have an idea? Let me know.</p>
+  <label for="fbType">Type</label>
+  <select id="fbType"><option>Correction</option><option>Missing Chapter</option><option>Suggestion</option><option>Bug</option></select>
+  <label for="fbEntry">Legion or Chapter (optional)</label>
+  <input id="fbEntry" list="names" autocomplete="off">
+  <label for="fbMsg">Details, ideally with a source</label>
+  <textarea id="fbMsg"></textarea>
+  <label for="fbFrom">Your email (optional, if you’d like a reply)</label>
+  <input id="fbFrom" type="email" autocomplete="email">
+  <div class="status" id="fbStatus" role="status"></div>
+  <div class="row">
+    <button class="btn" id="fbCancel">Cancel</button>
+    <button class="btn primary" id="fbSend">Send</button>
+  </div>
+</dialog>
+
 <script>
 /* =====================================================================
    HERALDRY IMAGES
@@ -171,7 +203,14 @@ svg#tree{position:absolute;inset:0;width:100%;height:100%;display:block}
    ===================================================================== */
 const HERALDRY = { /* "ultramarines": "heraldry/ultramarines.png" */ };
 const HERALDRY_PATTERN = "";
-const HERALDRY_SOURCE = { label: "", url: "" }; // e.g. the archived database page, shown as a credit link
+const HERALDRY_SOURCE = { label: "", url: "" };
+
+/* FEEDBACK: where the Feedback form sends messages once you self-host.
+   formspree: your Formspree form ID (the part after /f/ in its endpoint, e.g. "xyzabcde").
+              Messages are emailed to you without your address appearing in this page.
+   github / email: alternatives, used only if formspree is empty.
+   With none set, the message is copied to the clipboard. */
+const FEEDBACK = { formspree: "mjywkobe", github: "", email: "" }; // e.g. the archived database page, shown as a credit link
 
 /* ===================== FOUNDINGS (oldest first) ===================== */
 const COLS = [
@@ -180,19 +219,23 @@ const COLS = [
   {id:"secret", name:"Outside the Foundings", ep:"Raised in secret", date:"M31"},
   {id:"warbands", name:"Traitor warbands", ep:"Splintered after the Heresy", date:"M31 onward", era:true},
   {id:"f2", name:"2nd Founding", ep:"The Legions divided", date:"021.M31"},
+  {id:"u-m31", name:"Unnumbered Foundings", ep:"Founding number unstated", date:"M31"},
   {id:"f3", name:"3rd Founding", ep:"Proposed by Rogal Dorn", date:"001.M32"},
   {id:"f4", name:"4th Founding", ep:"After the War of the Beast", date:"546.M32"},
   {id:"f8", name:"8th Founding", ep:"", date:"Mid-M34"},
   {id:"f9", name:"9th Founding", ep:"", date:"Date unknown"},
   {id:"f10", name:"10th Founding", ep:"", date:"Mid-M35", note:"Only some Chapters’ placement in this Founding is confirmed."},
+  {id:"u-m32", name:"Unnumbered Foundings", ep:"Between the 3rd and 12th", date:"M32–M35"},
   {id:"f13", name:"13th Founding", ep:"The Dark Founding", date:"Late M35–early M36"},
   {id:"f17", name:"17th Founding", ep:"", date:"Date unknown"},
+  {id:"u-m36", name:"Unnumbered Foundings", ep:"Between the 14th and 20th", date:"M36"},
   {id:"f21", name:"21st Founding", ep:"The Cursed Founding", date:"991.M35", note:"Some sources date it before the 13th; it’s shown here in numbered order."},
   {id:"edict", name:"Ratified by edict", ep:"Outside the Foundings", date:"011.M37"},
   {id:"f23", name:"23rd Founding", ep:"The Sentinel Founding", date:"Late M37–early M38"},
   {id:"f24", name:"24th Founding", ep:"", date:"Date unknown"},
   {id:"f25", name:"25th Founding", ep:"The Bastion Founding", date:"Late M40"},
   {id:"f26", name:"26th Founding", ep:"", date:"738.M41"},
+  {id:"u-late", name:"Unnumbered Foundings", ep:"Between the 22nd and 26th", date:"M37–M41"},
   {id:"ultima", name:"Ultima Founding", ep:"Primaris Chapters", date:"c. 999.M41"},
   {id:"unrec", name:"Founding unrecorded", ep:"Number or date lost", date:"Any era"},
   {id:"fallen", name:"Fallen to Chaos", ep:"Loyal Chapters turned renegade", date:"Mostly M41", era:true}
@@ -202,83 +245,83 @@ const COLS = [
    f: founding id   p: gene-seed parent id   c: [primary, secondary] colour
    s: loyal | traitor | lost | renegade | expunged | root | group
    n: note          num: Legion numeral
-   lex / fan / d4: page-title overrides for Lexicanum, Fandom, 1d4chan  */
+   lex / fan / d4: page-title overrides for Lexicanum, Fandom, 2d4chan  */
 const NODES = [
-  {id:"emperor", name:"The Emperor of Mankind", f:"origin", s:"root", c:["#c9a35c","#7d6331"], n:"Source of all Astartes gene-seed, carried through the twenty Primarchs.", lex:"Emperor of Mankind", fan:"Emperor of Mankind", d4:"God-Emperor of Mankind"},
+  {id:"emperor", name:"The Emperor of Mankind", f:"origin", s:"root", c:["#c9a35c","#7d6331"], n:"Source of all Astartes gene-seed, carried through the twenty Primarchs.", lex:"Emperor of Mankind", fan:"Emperor of Mankind", d4:"God-Emperor of Mankind", d:"Master of Mankind and creator of the twenty Primarchs. Entombed on the Golden Throne since the Heresy, he is worshipped as a god across the Imperium."},
 
   // First Founding — the Legions
-  {id:"dark-angels", name:"Dark Angels", num:"I", f:"f1", p:"emperor", c:["#1f3d2b","#cdb98f"], n:"Primarch Lion El’Jonson. Homeworld Caliban."},
-  {id:"ii-legion", name:"II Legion", num:"II", f:"f1", p:"emperor", s:"expunged", c:["#5a5f66","#3b3f45"], n:"One of two Legions whose records were expunged from Imperial archives."},
-  {id:"emperors-children", name:"Emperor’s Children", num:"III", f:"f1", p:"emperor", s:"traitor", c:["#5e2a6b","#d0ac4a"], n:"Primarch Fulgrim. Joined Horus in the Heresy."},
-  {id:"iron-warriors", name:"Iron Warriors", num:"IV", f:"f1", p:"emperor", s:"traitor", c:["#7d8288","#d2ac2f"], n:"Primarch Perturabo. Joined Horus in the Heresy."},
-  {id:"white-scars", name:"White Scars", num:"V", f:"f1", p:"emperor", c:["#ece8de","#a62324"], n:"Primarch Jaghatai Khan. Homeworld Chogoris."},
-  {id:"space-wolves", name:"Space Wolves", num:"VI", f:"f1", p:"emperor", c:["#7f93a4","#c9a24d"], n:"Primarch Leman Russ. Homeworld Fenris. Never fully adopted the Codex Astartes."},
-  {id:"imperial-fists", name:"Imperial Fists", num:"VII", f:"f1", p:"emperor", c:["#e2b42a","#1d1d1d"], n:"Primarch Rogal Dorn. Defenders of Terra during the Siege."},
-  {id:"night-lords", name:"Night Lords", num:"VIII", f:"f1", p:"emperor", s:"traitor", c:["#1e2b55","#b9bcc2"], n:"Primarch Konrad Curze. Joined Horus in the Heresy."},
-  {id:"blood-angels", name:"Blood Angels", num:"IX", f:"f1", p:"emperor", c:["#9e1b1d","#d4ab3e"], n:"Primarch Sanguinius. Homeworld Baal."},
-  {id:"iron-hands", name:"Iron Hands", num:"X", f:"f1", p:"emperor", c:["#202224","#a2a8ae"], n:"Primarch Ferrus Manus. Homeworld Medusa."},
-  {id:"xi-legion", name:"XI Legion", num:"XI", f:"f1", p:"emperor", s:"expunged", c:["#5a5f66","#3b3f45"], n:"One of two Legions whose records were expunged from Imperial archives."},
-  {id:"world-eaters", name:"World Eaters", num:"XII", f:"f1", p:"emperor", s:"traitor", c:["#e7e2d7","#2e4f8f"], n:"Primarch Angron. Joined Horus in the Heresy."},
-  {id:"ultramarines", name:"Ultramarines", num:"XIII", f:"f1", p:"emperor", c:["#1f50a2","#d4ab3e"], n:"Primarch Roboute Guilliman, author of the Codex Astartes. Homeworld Macragge. Over half of all Chapters are said to carry their gene-seed."},
-  {id:"death-guard", name:"Death Guard", num:"XIV", f:"f1", p:"emperor", s:"traitor", c:["#c9c4a9","#4d5b30"], n:"Primarch Mortarion. Joined Horus in the Heresy."},
-  {id:"thousand-sons", name:"Thousand Sons", num:"XV", f:"f1", p:"emperor", s:"traitor", c:["#a52220","#d8b43e"], n:"Primarch Magnus the Red. Homeworld Prospero."},
-  {id:"sons-of-horus", name:"Sons of Horus", num:"XVI", f:"f1", p:"emperor", s:"traitor", c:["#2f6d60","#d4ab3e"], n:"Primarch Horus. Originally the Luna Wolves; later renamed the Black Legion."},
-  {id:"word-bearers", name:"Word Bearers", num:"XVII", f:"f1", p:"emperor", s:"traitor", c:["#7b1f26","#c8a34b"], n:"Primarch Lorgar. Homeworld Colchis."},
-  {id:"salamanders", name:"Salamanders", num:"XVIII", f:"f1", p:"emperor", c:["#1f6d3b","#2b2b2b"], n:"Primarch Vulkan. Homeworld Nocturne. Too few in number after the Heresy to produce recorded Second Founding successors."},
-  {id:"raven-guard", name:"Raven Guard", num:"XIX", f:"f1", p:"emperor", c:["#1c1c1c","#e6e6e6"], n:"Primarch Corax. Homeworld Deliverance."},
-  {id:"alpha-legion", name:"Alpha Legion", num:"XX", f:"f1", p:"emperor", s:"traitor", c:["#2f6f79","#c0c6cc"], n:"Primarchs Alpharius and Omegon. Joined Horus in the Heresy."},
+  {id:"dark-angels", name:"Dark Angels", num:"I", f:"f1", p:"emperor", c:["#1f3d2b","#cdb98f"], n:"Primarch Lion El’Jonson. Homeworld Caliban.", d:"The First Legion, led by Lion El’Jonson of Caliban. Secretive and proud, they hide the shame of the Fallen while hunting them relentlessly."},
+  {id:"ii-legion", name:"II Legion", num:"II", f:"f1", p:"emperor", s:"expunged", c:["#5a5f66","#3b3f45"], n:"One of two Legions whose records were expunged from Imperial archives.", d:"One of two Legions whose records were wiped from every Imperial archive. Their name, Primarch and fate are deliberately forgotten."},
+  {id:"emperors-children", name:"Emperor’s Children", num:"III", f:"f1", p:"emperor", s:"traitor", c:["#5e2a6b","#d0ac4a"], n:"Primarch Fulgrim. Joined Horus in the Heresy.", d:"Fulgrim’s Legion, obsessed with perfection. After siding with Horus they gave themselves to Slaanesh, chasing ever more extreme sensation and excess."},
+  {id:"iron-warriors", name:"Iron Warriors", num:"IV", f:"f1", p:"emperor", s:"traitor", c:["#7d8288","#d2ac2f"], n:"Primarch Perturabo. Joined Horus in the Heresy.", d:"Perturabo’s siege-masters from Olympia. Embittered by thankless garrison duty, they joined Horus and still wage the Long War from the daemon world Medrengard."},
+  {id:"white-scars", name:"White Scars", num:"V", f:"f1", p:"emperor", c:["#ece8de","#a62324"], n:"Primarch Jaghatai Khan. Homeworld Chogoris.", d:"Jaghatai Khan’s Legion from Chogoris, masters of lightning-fast mobile warfare on bikes and speeders, and fiercely loyal throughout the Heresy."},
+  {id:"space-wolves", name:"Space Wolves", num:"VI", f:"f1", p:"emperor", c:["#7f93a4","#c9a24d"], n:"Primarch Leman Russ. Homeworld Fenris. Never fully adopted the Codex Astartes.", d:"Leman Russ’s savage Legion from icy Fenris. They never fully adopted the Codex Astartes and keep their own fierce, saga-steeped traditions."},
+  {id:"imperial-fists", name:"Imperial Fists", num:"VII", f:"f1", p:"emperor", c:["#e2b42a","#1d1d1d"], n:"Primarch Rogal Dorn. Defenders of Terra during the Siege.", d:"Rogal Dorn’s Legion, unmatched in siegecraft and defence. They held the walls of the Imperial Palace during the Siege of Terra."},
+  {id:"night-lords", name:"Night Lords", num:"VIII", f:"f1", p:"emperor", s:"traitor", c:["#1e2b55","#b9bcc2"], n:"Primarch Konrad Curze. Joined Horus in the Heresy.", d:"Konrad Curze’s Legion from Nostramo, who waged war through terror. They joined Horus and now raid the Imperium as pirates and murderers."},
+  {id:"blood-angels", name:"Blood Angels", num:"IX", f:"f1", p:"emperor", c:["#9e1b1d","#d4ab3e"], n:"Primarch Sanguinius. Homeworld Baal.", d:"Sanguinius’s noble Legion from Baal, cursed by the Red Thirst and the Black Rage after their Primarch died at Horus’s hands."},
+  {id:"iron-hands", name:"Iron Hands", num:"X", f:"f1", p:"emperor", c:["#202224","#a2a8ae"], n:"Primarch Ferrus Manus. Homeworld Medusa.", d:"Ferrus Manus’s Legion from Medusa, who replace weak flesh with machinery. They were shattered at Isstvan V when their Primarch was slain."},
+  {id:"xi-legion", name:"XI Legion", num:"XI", f:"f1", p:"emperor", s:"expunged", c:["#5a5f66","#3b3f45"], n:"One of two Legions whose records were expunged from Imperial archives.", d:"One of two Legions whose records were wiped from every Imperial archive. Their name, Primarch and fate are deliberately forgotten."},
+  {id:"world-eaters", name:"World Eaters", num:"XII", f:"f1", p:"emperor", s:"traitor", c:["#e7e2d7","#2e4f8f"], n:"Primarch Angron. Joined Horus in the Heresy.", d:"Angron’s berserkers, driven by the implanted Butcher’s Nails. They fell to Khorne and splintered into countless warbands after the battle of Skalathrax."},
+  {id:"ultramarines", name:"Ultramarines", num:"XIII", f:"f1", p:"emperor", c:["#1f50a2","#d4ab3e"], n:"Primarch Roboute Guilliman, author of the Codex Astartes. Homeworld Macragge. Over half of all Chapters are said to carry their gene-seed.", d:"Roboute Guilliman’s Legion from Macragge, author of the Codex Astartes. Most later Chapters carry their gene-seed, and their Primarch has returned."},
+  {id:"death-guard", name:"Death Guard", num:"XIV", f:"f1", p:"emperor", s:"traitor", c:["#c9c4a9","#4d5b30"], n:"Primarch Mortarion. Joined Horus in the Heresy.", d:"Mortarion’s grim, enduring Legion from Barbarus. Struck by plague in the Warp, they became the rotting, unkillable servants of Nurgle."},
+  {id:"thousand-sons", name:"Thousand Sons", num:"XV", f:"f1", p:"emperor", s:"traitor", c:["#a52220","#d8b43e"], n:"Primarch Magnus the Red. Homeworld Prospero.", d:"Magnus the Red’s sorcerous Legion from Prospero. After Prospero burned they served Tzeentch, until Ahriman’s Rubric turned most of them to dust."},
+  {id:"sons-of-horus", name:"Sons of Horus", num:"XVI", f:"f1", p:"emperor", s:"traitor", c:["#2f6d60","#d4ab3e"], n:"Primarch Horus. Originally the Luna Wolves; later renamed the Black Legion.", d:"Horus’s Legion, first named the Luna Wolves. They led the Heresy, and after Horus fell Abaddon renamed them the Black Legion."},
+  {id:"word-bearers", name:"Word Bearers", num:"XVII", f:"f1", p:"emperor", s:"traitor", c:["#7b1f26","#c8a34b"], n:"Primarch Lorgar. Homeworld Colchis.", d:"Lorgar’s zealous Legion from Colchis, the first to embrace Chaos. Their Dark Apostles preach worship of the Dark Gods across the galaxy."},
+  {id:"salamanders", name:"Salamanders", num:"XVIII", f:"f1", p:"emperor", c:["#1f6d3b","#2b2b2b"], n:"Primarch Vulkan. Homeworld Nocturne. Too few in number after the Heresy to produce recorded Second Founding successors.", d:"Vulkan’s Legion from Nocturne: master forgesmiths who favour flame weapons and shield civilians. Few survived Isstvan V, so they have few successors."},
+  {id:"raven-guard", name:"Raven Guard", num:"XIX", f:"f1", p:"emperor", c:["#1c1c1c","#e6e6e6"], n:"Primarch Corax. Homeworld Deliverance.", d:"Corax’s Legion from Deliverance, masters of stealth, infiltration and sudden strikes. Nearly annihilated at Isstvan V, they slowly rebuilt."},
+  {id:"alpha-legion", name:"Alpha Legion", num:"XX", f:"f1", p:"emperor", s:"traitor", c:["#2f6f79","#c0c6cc"], n:"Primarchs Alpharius and Omegon. Joined Horus in the Heresy.", d:"The last Legion, led by twin Primarchs Alpharius and Omegon. Masters of infiltration and misdirection, their true goals remain a mystery."},
 
   // Traitor Legion offshoots (shown under their Legion of origin)
-  {id:"the-fallen", name:"The Fallen", f:"warbands", p:"dark-angels", s:"traitor", kind:"warband", n:"Dark Angels who sided against the Lion during the Heresy and were scattered through time and space when Caliban was destroyed.", lex:"Fallen", fan:"Fallen Angels", d4:"Fallen Angels"},
-  {id:"glittering-myriad", name:"Glittering Myriad", f:"warbands", p:"emperors-children", s:"traitor", kind:"warband", n:"Slaaneshi warband led by Aesclemos."},
-  {id:"the-faultless", name:"The Faultless", f:"warbands", p:"emperors-children", s:"traitor", kind:"warband", n:"Lucius the Eternal’s warband; it absorbed the remnants of his old Heresy-era bodyguard, the Cohors Nasicae."},
-  {id:"gloomtalons", name:"Gloomtalons", f:"warbands", p:"night-lords", s:"traitor", kind:"warband", n:"Haarken Worldclaimer’s Raptor warband, now heralds of the Black Legion."},
-  {id:"blades-of-savasdus", name:"Blades of Savasdus", f:"warbands", p:"night-lords", s:"traitor", kind:"warband", n:"Led the Night Lords warbands in the war on Vigilus."},
-  {id:"shadow-flayers", name:"Shadow Flayers", f:"warbands", p:"night-lords", s:"traitor", kind:"warband", n:"Command several Chaos cults that worship them."},
-  {id:"skulltakers", name:"Skulltakers", f:"warbands", p:"world-eaters", s:"traitor", kind:"warband", n:"Zhufor’s warband, which fought at the Siege of Vraks. Some authors treat them as only loosely World Eaters."},
-  {id:"sons-of-slaughter", name:"Sons of Slaughter", f:"warbands", p:"world-eaters", s:"traitor", kind:"warband", n:"Once led by Khârn."},
-  {id:"voidbutchers", name:"Voidbutchers", f:"warbands", p:"world-eaters", s:"traitor", kind:"warband", n:"One of the warbands born from the Battle of Skalathrax, which shattered the Legion."},
-  {id:"hounds-jaws", name:"Hound’s Jaws", f:"warbands", p:"world-eaters", s:"traitor", kind:"warband"},
-  {id:"riven", name:"Riven", f:"warbands", p:"world-eaters", s:"traitor", kind:"warband", n:"Post-Heresy warband that joined the Black Legion.", lex:"Riven (Warband)"},
-  {id:"harbingers", name:"The Harbingers", f:"warbands", p:"death-guard", s:"traitor", kind:"plague", n:"One of the Death Guard’s seven Plague Companies.", lex:"Harbingers"},
-  {id:"inexorable", name:"The Inexorable", f:"warbands", p:"death-guard", s:"traitor", kind:"plague", n:"One of the Death Guard’s seven Plague Companies."},
-  {id:"mortarions-anvil", name:"Mortarion’s Anvil", f:"warbands", p:"death-guard", s:"traitor", kind:"plague", n:"The Third Plague Company. Defensive specialists who let foes break against their lines.", lex:"Mortarion's Anvil (3rd Plague Company)"},
-  {id:"wretched", name:"The Wretched", f:"warbands", p:"death-guard", s:"traitor", kind:"plague", n:"One of the Death Guard’s seven Plague Companies."},
-  {id:"poxmongers", name:"The Poxmongers", f:"warbands", p:"death-guard", s:"traitor", kind:"plague", n:"One of the Death Guard’s seven Plague Companies."},
-  {id:"ferrymen", name:"The Ferrymen", f:"warbands", p:"death-guard", s:"traitor", kind:"plague", n:"One of the Death Guard’s seven Plague Companies."},
-  {id:"mortarions-chosen-sons", name:"Mortarion’s Chosen Sons", f:"warbands", p:"death-guard", s:"traitor", kind:"plague", n:"The Seventh Plague Company: plague brewers and alchemists.", lex:"7th Plague Company"},
-  {id:"legion-host", name:"Legion Host", f:"warbands", p:"death-guard", s:"traitor", kind:"warband", n:"Warband of Death Guard origin led by Thagus Daravek."},
-  {id:"black-legion", name:"Black Legion", f:"warbands", p:"sons-of-horus", s:"traitor", kind:"renamed", c:["#151515","#c9a54a"], n:"The Sons of Horus, renamed by Ezekyle Abaddon. Spearhead of the Black Crusades."},
-  {id:"34th-host", name:"34th Host", f:"warbands", p:"word-bearers", s:"traitor", kind:"warband", n:"Word Bearers Host of Dark Apostle Jarulek and his successor Marduk."},
+  {id:"the-fallen", name:"The Fallen", f:"warbands", p:"dark-angels", s:"traitor", kind:"warband", n:"Dark Angels who sided against the Lion during the Heresy and were scattered through time and space when Caliban was destroyed.", lex:"Fallen", fan:"Fallen Angels", d4:"Fallen Angels", d:"Dark Angels who turned against the Lion during the Heresy. Scattered through time and space when Caliban was destroyed, they are hunted still."},
+  {id:"glittering-myriad", name:"Glittering Myriad", f:"warbands", p:"emperors-children", s:"traitor", kind:"warband", n:"Slaaneshi warband led by Aesclemos.", d:"A Slaanesh-devoted Emperor’s Children warband led by Aesclemos. Beyond its leader and its devotion, little of its history is recorded."},
+  {id:"the-faultless", name:"The Faultless", f:"warbands", p:"emperors-children", s:"traitor", kind:"warband", n:"Lucius the Eternal’s warband; it absorbed the remnants of his old Heresy-era bodyguard, the Cohors Nasicae.", d:"Lucius the Eternal’s warband of duellists. It absorbed the remnants of his old Heresy-era bodyguard, the Cohors Nasicae."},
+  {id:"gloomtalons", name:"Gloomtalons", f:"warbands", p:"night-lords", s:"traitor", kind:"warband", n:"Haarken Worldclaimer’s Raptor warband, now heralds of the Black Legion.", d:"Haarken Worldclaimer’s Night Lords Raptor warband. Haarken now serves as herald to Abaddon, announcing the Black Legion’s attacks."},
+  {id:"blades-of-savasdus", name:"Blades of Savasdus", f:"warbands", p:"night-lords", s:"traitor", kind:"warband", n:"Led the Night Lords warbands in the war on Vigilus.", d:"A Night Lords warband that led the Legion’s raiders in the war for Vigilus, spreading terror through the embattled planet’s hives."},
+  {id:"shadow-flayers", name:"Shadow Flayers", f:"warbands", p:"night-lords", s:"traitor", kind:"warband", n:"Command several Chaos cults that worship them.", d:"A Night Lords warband that rules several Chaos cults, whose mortal members worship the Legionaries themselves as dark gods."},
+  {id:"skulltakers", name:"Skulltakers", f:"warbands", p:"world-eaters", s:"traitor", kind:"warband", n:"Zhufor’s warband, which fought at the Siege of Vraks. Some authors treat them as only loosely World Eaters.", d:"Zhufor’s Khornate warband, which fought at the Siege of Vraks. Some authors treat it as only loosely descended from the World Eaters."},
+  {id:"sons-of-slaughter", name:"Sons of Slaughter", f:"warbands", p:"world-eaters", s:"traitor", kind:"warband", n:"Once led by Khârn.", d:"A World Eaters warband once led by Khârn the Betrayer, the Legion’s most infamous berserker and Angron’s former equerry."},
+  {id:"voidbutchers", name:"Voidbutchers", f:"warbands", p:"world-eaters", s:"traitor", kind:"warband", n:"One of the warbands born from the Battle of Skalathrax, which shattered the Legion.", d:"A World Eaters warband born from the Battle of Skalathrax, where the Legion turned on itself and shattered into warbands."},
+  {id:"hounds-jaws", name:"Hound’s Jaws", f:"warbands", p:"world-eaters", s:"traitor", kind:"warband", d:"One of the many World Eaters warbands formed after the Legion shattered at Skalathrax. Little of its own history is recorded."},
+  {id:"riven", name:"Riven", f:"warbands", p:"world-eaters", s:"traitor", kind:"warband", n:"Post-Heresy warband that joined the Black Legion.", lex:"Riven (Warband)", d:"A World Eaters warband formed after the Heresy that later pledged itself to Abaddon’s Black Legion."},
+  {id:"harbingers", name:"The Harbingers", f:"warbands", p:"death-guard", s:"traitor", kind:"plague", n:"One of the Death Guard’s seven Plague Companies.", lex:"Harbingers", d:"The First of the Death Guard’s seven Plague Companies, the great formations of Mortarion’s Legion; seven is Nurgle’s sacred number."},
+  {id:"inexorable", name:"The Inexorable", f:"warbands", p:"death-guard", s:"traitor", kind:"plague", n:"One of the Death Guard’s seven Plague Companies.", d:"The Second of the Death Guard’s seven Plague Companies, the great formations of Mortarion’s Legion; seven is Nurgle’s sacred number."},
+  {id:"mortarions-anvil", name:"Mortarion’s Anvil", f:"warbands", p:"death-guard", s:"traitor", kind:"plague", n:"The Third Plague Company. Defensive specialists who let foes break against their lines.", lex:"Mortarion's Anvil (3rd Plague Company)", d:"The Third Plague Company: defensive specialists who let enemy assaults break against their unyielding lines before grinding them down."},
+  {id:"wretched", name:"The Wretched", f:"warbands", p:"death-guard", s:"traitor", kind:"plague", n:"One of the Death Guard’s seven Plague Companies.", d:"One of the Death Guard’s seven Plague Companies, the great formations of Mortarion’s Legion; seven is Nurgle’s sacred number."},
+  {id:"poxmongers", name:"The Poxmongers", f:"warbands", p:"death-guard", s:"traitor", kind:"plague", n:"One of the Death Guard’s seven Plague Companies.", d:"One of the Death Guard’s seven Plague Companies, the great formations of Mortarion’s Legion; seven is Nurgle’s sacred number."},
+  {id:"ferrymen", name:"The Ferrymen", f:"warbands", p:"death-guard", s:"traitor", kind:"plague", n:"One of the Death Guard’s seven Plague Companies.", d:"One of the Death Guard’s seven Plague Companies, the great formations of Mortarion’s Legion; seven is Nurgle’s sacred number."},
+  {id:"mortarions-chosen-sons", name:"Mortarion’s Chosen Sons", f:"warbands", p:"death-guard", s:"traitor", kind:"plague", n:"The Seventh Plague Company: plague brewers and alchemists.", lex:"7th Plague Company", d:"The Seventh Plague Company, the Legion’s plague brewers and alchemists, who devise new contagions for Nurgle’s war."},
+  {id:"legion-host", name:"Legion Host", f:"warbands", p:"death-guard", s:"traitor", kind:"warband", n:"Warband of Death Guard origin led by Thagus Daravek.", d:"A warband of Death Guard origin led by Thagus Daravek, a warlord who has gathered many lesser forces under his banner."},
+  {id:"black-legion", name:"Black Legion", f:"warbands", p:"sons-of-horus", s:"traitor", kind:"renamed", c:["#151515","#c9a54a"], n:"The Sons of Horus, renamed by Ezekyle Abaddon. Spearhead of the Black Crusades.", d:"The Sons of Horus, renamed by Abaddon the Despoiler. From the Eye of Terror they spearhead the Black Crusades against the Imperium."},
+  {id:"34th-host", name:"34th Host", f:"warbands", p:"word-bearers", s:"traitor", kind:"warband", n:"Word Bearers Host of Dark Apostle Jarulek and his successor Marduk.", d:"A Word Bearers Host led by Dark Apostle Jarulek and later by his ambitious successor Marduk, as told in the Dark Apostle novels."},
 
-  {id:"grey-knights", name:"Grey Knights", f:"secret", p:"emperor", c:["#a9b1b8","#2f4f8f"], n:"Raised in secret by Malcador on the Emperor’s orders during the Heresy, before the Second Founding. The 666th Chapter."},
+  {id:"grey-knights", name:"Grey Knights", f:"secret", p:"emperor", c:["#a9b1b8","#2f4f8f"], n:"Raised in secret by Malcador on the Emperor’s orders during the Heresy, before the Second Founding. The 666th Chapter.", d:"Daemon-hunters raised in secret by Malcador during the Heresy. Every brother is a psyker, and the Chapter serves the Ordo Malleus."},
   {id:"unknown", name:"Gene-seed unrecorded", f:"f1", p:"emperor", s:"group", c:["#6b7280","#3f4652"], n:"Chapters whose progenitor Legion is unknown or disputed, plus Primaris Chapters whose gene-line isn’t tracked here."},
 
   // Second Founding
-  {id:"angels-of-absolution", name:"Angels of Absolution", f:"f2", p:"dark-angels", c:["#e3dccb","#1f3d2b"]},
-  {id:"angels-of-redemption", name:"Angels of Redemption", f:"f2", p:"dark-angels", c:["#1b1b1b","#8a1a1a"]},
-  {id:"angels-of-vengeance", name:"Angels of Vengeance", f:"f2", p:"dark-angels"},
+  {id:"angels-of-absolution", name:"Angels of Absolution", f:"f2", p:"dark-angels", c:["#e3dccb","#1f3d2b"], d:"One of the Unforgiven, the Dark Angels’ inner bloodline. Like their parent Chapter, they are bound to the secret hunt for the Fallen."},
+  {id:"angels-of-redemption", name:"Angels of Redemption", f:"f2", p:"dark-angels", c:["#1b1b1b","#8a1a1a"], d:"One of the Unforgiven, the Dark Angels’ inner bloodline, especially zealous and single-minded in hunting down the Fallen."},
+  {id:"angels-of-vengeance", name:"Angels of Vengeance", f:"f2", p:"dark-angels", d:"One of the Unforgiven, the Dark Angels’ inner bloodline. Like their parent Chapter, they are bound to the secret hunt for the Fallen."},
   {id:"marauders", name:"Marauders", f:"f2", p:"white-scars", lex:"Marauders (Chapter)"},
   {id:"rampagers", name:"Rampagers", f:"f2", p:"white-scars"},
-  {id:"wolf-brothers", name:"Wolf Brothers", f:"f2", p:"space-wolves", s:"lost", n:"The only Chapter split from the Space Wolves Legion. Later disbanded."},
-  {id:"black-templars", name:"Black Templars", f:"f2", p:"imperial-fists", c:["#151515","#e8e6e0"], n:"A crusading Chapter that never fully adopted the Codex Astartes."},
-  {id:"crimson-fists", name:"Crimson Fists", f:"f2", p:"imperial-fists", c:["#1e408c","#b5211f"]},
+  {id:"wolf-brothers", name:"Wolf Brothers", f:"f2", p:"space-wolves", s:"lost", n:"The only Chapter split from the Space Wolves Legion. Later disbanded.", d:"The only Chapter split from the Space Wolves in the 2nd Founding. It was later disbanded and its history is little known."},
+  {id:"black-templars", name:"Black Templars", f:"f2", p:"imperial-fists", c:["#151515","#e8e6e0"], n:"A crusading Chapter that never fully adopted the Codex Astartes.", d:"Rogal Dorn’s crusading heirs, founded by Sigismund. Never fully Codex-compliant, they wage zealous, endless crusades and far exceed a thousand warriors."},
+  {id:"crimson-fists", name:"Crimson Fists", f:"f2", p:"imperial-fists", c:["#1e408c","#b5211f"], d:"Imperial Fists successor almost wiped out on Rynn’s World when their own fortress-monastery was destroyed during an Ork invasion."},
   {id:"excoriators", name:"Excoriators", f:"f2", p:"imperial-fists"},
-  {id:"fists-exemplar", name:"Fists Exemplar", f:"f2", p:"imperial-fists"},
+  {id:"fists-exemplar", name:"Fists Exemplar", f:"f2", p:"imperial-fists", d:"Imperial Fists successor nearly destroyed in the War of the Beast; its survivors helped rebuild the shattered Imperial Fists themselves."},
   {id:"angels-encarmine", name:"Angels Encarmine", f:"f2", p:"blood-angels"},
   {id:"angels-sanguine", name:"Angels Sanguine", f:"f2", p:"blood-angels"},
   {id:"angels-vermillion", name:"Angels Vermillion", f:"f2", p:"blood-angels"},
-  {id:"blood-drinkers", name:"Blood Drinkers", f:"f2", p:"blood-angels", c:["#7a1a2a","#e3e0d8"]},
-  {id:"flesh-tearers", name:"Flesh Tearers", f:"f2", p:"blood-angels", c:["#8b1515","#171717"]},
+  {id:"blood-drinkers", name:"Blood Drinkers", f:"f2", p:"blood-angels", c:["#7a1a2a","#e3e0d8"], d:"Blood Angels successor that, unlike most of its kin, follows the Codex Astartes closely while still bearing the Red Thirst."},
+  {id:"flesh-tearers", name:"Flesh Tearers", f:"f2", p:"blood-angels", c:["#8b1515","#171717"], d:"Gabriel Seth’s ferocious Blood Angels successor, so afflicted by the Red Thirst that it has come close to censure and extinction."},
   {id:"red-talons", name:"Red Talons", f:"f2", p:"iron-hands"},
   {id:"brazen-claws", name:"Brazen Claws", f:"f2", p:"iron-hands"},
-  {id:"iron-lords", name:"Iron Lords", f:"f2", p:"iron-hands"},
-  {id:"novamarines", name:"Novamarines", f:"f2", p:"ultramarines"},
-  {id:"patriarchs-of-ulixis", name:"Patriarchs of Ulixis", f:"f2", p:"ultramarines"},
+  {id:"iron-lords", name:"Iron Lords", f:"u-late", p:"iron-hands", n:"Some lists place them in the 2nd Founding instead."},
+  {id:"novamarines", name:"Novamarines", f:"f2", p:"ultramarines", d:"One of the Ultramarines’ proud Primogenitor Chapters, created in the 2nd Founding and still closely tied to Ultramar."},
+  {id:"patriarchs-of-ulixis", name:"Patriarchs of Ulixis", f:"f2", p:"ultramarines", d:"One of the Ultramarines’ Primogenitor Chapters from the 2nd Founding, widely acclaimed for its skill in battle."},
   {id:"libators", name:"Libators", f:"f2", p:"ultramarines"},
   {id:"genesis-chapter", name:"Genesis Chapter", f:"f2", p:"ultramarines"},
   {id:"black-consuls", name:"Black Consuls", f:"f2", p:"ultramarines"},
-  {id:"iron-snakes", name:"Iron Snakes", f:"f2", p:"ultramarines"},
+  {id:"iron-snakes", name:"Iron Snakes", f:"f2", p:"ultramarines", d:"Ultramarines successor from the ocean world Ithaka, with proud seafaring traditions, famous for its long defence of the Reef Stars."},
   {id:"black-guard", name:"Black Guard", f:"f2", p:"raven-guard"},
   {id:"revilers", name:"Revilers", f:"f2", p:"raven-guard"},
 
@@ -286,8 +329,8 @@ const NODES = [
   {id:"angels-erythrean", name:"Angels Erythrean", f:"f3", p:"blood-angels"},
   {id:"charnel-guard", name:"Charnel Guard", f:"f3", p:"blood-angels", n:"Third Founding is unconfirmed."},
   {id:"death-wardens", name:"Death Wardens", f:"f3", p:"blood-angels", n:"Drawn from the Blood Angels and several of their successors."},
-  {id:"executioners", name:"Executioners", f:"f3", p:"imperial-fists", n:"Third Founding according to the Chapter’s own chronicles."},
-  {id:"scythes-of-the-emperor", name:"Scythes of the Emperor", f:"f3", p:"ultramarines", n:"Almost destroyed in the Second Tyrannic War."},
+  {id:"executioners", name:"Executioners", f:"f3", p:"imperial-fists", n:"Third Founding according to the Chapter’s own chronicles.", d:"Imperial Fists successor from Stygia-Aquilon that fought on the loyalist side against the secessionists in the Badab War."},
+  {id:"scythes-of-the-emperor", name:"Scythes of the Emperor", f:"f3", p:"ultramarines", n:"Almost destroyed in the Second Tyrannic War.", d:"Ultramarines successor from Sotha, almost wiped out when Hive Fleet Kraken devoured its homeworld in the Second Tyrannic War."},
   {id:"dark-paladins", name:"Dark Paladins", f:"f3", p:"unknown", s:"lost", n:"Destroyed by the Necrons in M41."},
 
   // Fourth Founding
@@ -296,63 +339,185 @@ const NODES = [
   {id:"tome-keepers", name:"Tome Keepers", f:"f4", p:"ultramarines"},
 
   // Eighth / Ninth
-  {id:"angels-revenant", name:"Angels Revenant", f:"f8", p:"ultramarines", n:"Nearly destroyed by the Necrons of the Maynarkh Dynasty."},
-  {id:"mantis-warriors", name:"Mantis Warriors", f:"f8", p:"white-scars", n:"Eighth Founding is unconfirmed."},
+  {id:"angels-revenant", name:"Angels Revenant", f:"f8", p:"ultramarines", n:"Nearly destroyed by the Necrons of the Maynarkh Dynasty.", d:"Ultramarines successor from Libethra, nearly annihilated by the Necrons of the Maynarkh Dynasty during the Orphean War."},
+  {id:"mantis-warriors", name:"Mantis Warriors", f:"f8", p:"white-scars", n:"Eighth Founding is unconfirmed.", d:"White Scars successor that sided with the Astral Claws in the Badab War, then surrendered and undertook a crusade of penance."},
   {id:"angels-resplendent", name:"Angels Resplendent", f:"f9", p:"blood-angels", n:"Later renamed the Angels Penitent."},
 
   // Thirteenth (Dark) Founding
-  {id:"exorcists", name:"Exorcists", f:"f13", p:"imperial-fists"},
-  {id:"death-spectres", name:"Death Spectres", f:"f13", p:"raven-guard", n:"Genetic drift turns their initiates albino."},
+  {id:"exorcists", name:"Exorcists", f:"f13", p:"imperial-fists", d:"Imperial Fists successor whose recruits are deliberately possessed by daemons and then exorcised, hardening them against the Warp."},
+  {id:"death-spectres", name:"Death Spectres", f:"f13", p:"raven-guard", n:"Genetic drift turns their initiates albino.", d:"Grim, death-obsessed Raven Guard successor from Occludus, whose initiates turn albino during their transformation into Space Marines."},
 
   // Seventeenth
   {id:"sons-of-pertinax", name:"Sons of Pertinax", f:"f17", p:"imperial-fists", n:"Imperial Fists descent is speculated. The Chapter renames itself after each Chapter Master."},
 
   // Twenty-First (Cursed) Founding
-  {id:"lamenters", name:"Lamenters", f:"f21", p:"blood-angels", c:["#e3c22b","#7b1616"], n:"Rebelled in the Badab War, then sent on a crusade of penance."},
-  {id:"fire-hawks", name:"Fire Hawks", f:"f21", p:"ultramarines", s:"lost", n:"Ultramarines descent is most likely. Lost in the Warp."},
-  {id:"black-dragons", name:"Black Dragons", f:"f21", p:"salamanders", c:["#131313","#c0c0c0"], n:"Mutation grows bony crests and blades from their bodies."},
-  {id:"sons-of-antaeus", name:"Sons of Antaeus", f:"f21", p:"ultramarines"},
-  {id:"blood-gorgons", name:"Blood Gorgons", f:"f21", p:"unknown", s:"renegade", n:"Turned traitor within a generation of their founding."},
-  {id:"flame-falcons", name:"Flame Falcons", f:"f21", p:"unknown", s:"renegade", n:"Declared Excommunicate Traitoris after extreme corruption and destroyed by the Grey Knights."},
-  {id:"minotaurs", name:"Minotaurs", f:"f21", p:"unknown", c:["#b48a2c","#3a2a1b"]},
+  {id:"lamenters", name:"Lamenters", f:"f21", p:"blood-angels", c:["#e3c22b","#7b1616"], n:"Rebelled in the Badab War, then sent on a crusade of penance.", d:"Cursed Blood Angels successor that fought for the secessionists in the Badab War, then was almost destroyed by Hive Fleet Kraken during its penance."},
+  {id:"fire-hawks", name:"Fire Hawks", f:"f21", p:"ultramarines", s:"lost", n:"Ultramarines descent is most likely. Lost in the Warp.", d:"Ultramarines-descended Chapter of the Cursed Founding, dogged by disaster. They vanished in the Warp; some say they became the Legion of the Damned."},
+  {id:"black-dragons", name:"Black Dragons", f:"f21", p:"salamanders", c:["#131313","#c0c0c0"], n:"Mutation grows bony crests and blades from their bodies.", d:"Salamanders-descended Chapter of the Cursed Founding whose mutated gene-seed grows bony crests and blades from skull and forearms."},
+  {id:"sons-of-antaeus", name:"Sons of Antaeus", f:"f21", p:"ultramarines", d:"Ultramarines-descended Chapter of the Cursed Founding whose mutated gene-seed gives its warriors dense, almost metallic bones."},
+  {id:"blood-gorgons", name:"Blood Gorgons", f:"f21", p:"unknown", s:"renegade", n:"Turned traitor within a generation of their founding.", d:"Cursed Founding Chapter that turned traitor within a generation and now raids the Imperium as a Chaos warband."},
+  {id:"flame-falcons", name:"Flame Falcons", f:"f21", p:"unknown", s:"renegade", n:"Declared Excommunicate Traitoris after extreme corruption and destroyed by the Grey Knights.", d:"Cursed Founding Chapter wreathed in unnatural flames that did not burn them; declared traitors and destroyed by the Grey Knights on Lethe."},
+  {id:"minotaurs", name:"Minotaurs", f:"f21", p:"unknown", c:["#b48a2c","#3a2a1b"], d:"Bronze-armoured, fleet-based Chapter of mysterious origin that answers to the High Lords of Terra, often sent to punish other Chapters."},
 
   // Tenth
-  {id:"astral-claws", name:"Astral Claws", f:"f10", p:"unknown", s:"renegade", n:"Tenth Founding is unconfirmed. Led the secession that began the Badab War; the survivors became the Red Corsairs."},
+  {id:"astral-claws", name:"Astral Claws", f:"f10", p:"unknown", s:"renegade", n:"Tenth Founding is unconfirmed. Led the secession that began the Badab War; the survivors became the Red Corsairs.", d:"Chapter from Badab whose Master, Lufgt Huron, led the secession of the Badab War. Its survivors fled to become the Red Corsairs."},
 
   // By edict
-  {id:"sons-of-medusa", name:"Sons of Medusa", f:"edict", p:"iron-hands", n:"Ratified by unprecedented edict in 011.M37, outside any Founding."},
+  {id:"sons-of-medusa", name:"Sons of Medusa", f:"edict", p:"iron-hands", n:"Ratified by unprecedented edict in 011.M37, outside any Founding.", d:"Iron Hands successor formed from clans that broke from their parent Chapters, then ratified by unprecedented edict outside any Founding."},
 
   // Twenty-Third (Sentinel) Founding
   {id:"marines-errant", name:"Marines Errant", f:"f23", p:"unknown"},
   {id:"imperial-harbingers", name:"Imperial Harbingers", f:"f23", p:"unknown"},
-  {id:"star-phantoms", name:"Star Phantoms", f:"f23", p:"unknown"},
+  {id:"star-phantoms", name:"Star Phantoms", f:"f23", p:"unknown", d:"Sentinel Founding Chapter from Haakoneth, later Jahga, notorious for clashing with other Imperial authorities and Chapters."},
   {id:"celestial-lions", name:"Celestial Lions", f:"f23", p:"unknown", c:["#c8a33a","#7a1414"]},
   {id:"steel-cobras", name:"Steel Cobras", f:"f23", p:"unknown"},
 
   // Twenty-Fourth / Fifth / Sixth
   {id:"hospitallers", name:"Hospitallers", f:"f24", p:"imperial-fists"},
   {id:"fire-angels", name:"Fire Angels", f:"f25", p:"unknown"},
-  {id:"emperors-spears", name:"Emperor’s Spears", f:"f25", p:"unknown"},
-  {id:"star-scorpions", name:"Star Scorpions", f:"f25", p:"unknown", s:"renegade", n:"Thought lost in the Warp; in truth fell to Chaos as the warband called the Pure."},
-  {id:"mentor-legion", name:"Mentor Legion", f:"f26", p:"unknown", n:"Raised to replace the Star Scorpions, reportedly from new genetic stock in Terra’s genebanks."},
+  {id:"emperors-spears", name:"Emperor’s Spears", f:"f25", p:"unknown", d:"Bastion Founding Chapter sworn to guard the remote, embattled region of Elara’s Veil at the edge of the Imperium."},
+  {id:"star-scorpions", name:"Star Scorpions", f:"f25", p:"unknown", s:"renegade", n:"Thought lost in the Warp; in truth fell to Chaos as the warband called the Pure.", d:"Bastion Founding Chapter thought lost in the Warp and replaced. In truth it fell to Chaos and became the warband called the Pure."},
+  {id:"mentor-legion", name:"Mentor Legion", f:"f26", p:"unknown", n:"Raised to replace the Star Scorpions, reportedly from new genetic stock in Terra’s genebanks.", d:"Raised in the 26th Founding to replace the Star Scorpions. They test new equipment and lend expertise to other Imperial forces."},
 
   // Ultima Founding
-  {id:"silver-templars", name:"Silver Templars", f:"ultima", p:"unknown", n:"Primaris Chapter of the Ultima Founding."},
-  {id:"necropolis-hawks", name:"Necropolis Hawks", f:"ultima", p:"unknown", n:"Primaris Chapter of the Ultima Founding."},
+  {id:"silver-templars", name:"Silver Templars", f:"ultima", p:"unknown", d:"Primaris Chapter of the Ultima Founding with a deep reverence for the blade, renowned for its swordsmanship and duelling traditions."},
+  {id:"necropolis-hawks", name:"Necropolis Hawks", f:"ultima", p:"unknown"},
 
   // Founding unrecorded
-  {id:"raptors", name:"Raptors", f:"unrec", p:"raven-guard", c:["#4b5a3a","#c2a36a"], n:"Sources conflict: some list them as Second Founding, another as a later one.", lex:"Raptors (Chapter)", fan:"Raptors", d4:"Raptors"},
-  {id:"carcharodons", name:"Carcharodons", f:"unrec", p:"raven-guard", c:["#6c737a","#2b2b2b"], n:"Origin is disputed; most often linked to the Raven Guard."},
-  {id:"silver-skulls", name:"Silver Skulls", f:"unrec", p:"ultramarines", c:["#b8bec4","#9c1b1b"], n:"Listed as a later Founding; one source names the Ultramarines as progenitor."},
-  {id:"howling-griffons", name:"Howling Griffons", f:"unrec", p:"ultramarines", n:"Founded in M33; Founding number unstated."},
-  {id:"marines-malevolent", name:"Marines Malevolent", f:"unrec", p:"unknown", n:"Founded in M32; Founding number unstated."},
-  {id:"relictors", name:"Relictors", f:"unrec", p:"unknown", n:"Founded in M36; Founding number unstated."},
-  {id:"crimson-sabres", name:"Crimson Sabres", f:"unrec", p:"unknown", s:"renegade", n:"Founding and progenitor unknown; their earliest records date to the dawn of M36. Declared renegade in M41."},
-  {id:"blood-ravens", name:"Blood Ravens", f:"unrec", p:"unknown", c:["#7a1414","#e6e2d8"], n:"Both Founding and gene-seed are unknown, even to the Chapter itself."},
+  {id:"raptors", name:"Raptors", f:"unrec", p:"raven-guard", c:["#4b5a3a","#c2a36a"], n:"Sources conflict: some list them as Second Founding, another as a later one.", lex:"Raptors (Chapter)", fan:"Raptors", d4:"Raptors", d:"Raven Guard successor famed for camouflage and skirmishing, preferring stealth and precise strikes to glory and display."},
+  {id:"carcharodons", name:"Carcharodons", f:"unrec", p:"raven-guard", c:["#6c737a","#2b2b2b"], n:"Origin is disputed; most often linked to the Raven Guard.", d:"Mysterious, fleet-based Chapter that roams the galaxy’s outer dark as reavers; its origin is disputed but often linked to the Raven Guard."},
+  {id:"silver-skulls", name:"Silver Skulls", f:"f2", p:"ultramarines", c:["#b8bec4","#9c1b1b"], n:"Sources conflict: older lists place them in a later Founding; newer ones make them a 2nd Founding Ultramarines successor.", d:"Ultramarines successor from Varsavia that consults its Prognosticators’ visions of the future before committing to any battle."},
+  {id:"howling-griffons", name:"Howling Griffons", f:"u-m32", p:"ultramarines", n:"Founded in M33; Founding number unstated."},
+  {id:"marines-malevolent", name:"Marines Malevolent", f:"u-m32", p:"unknown", n:"Founded in M32; Founding number unstated.", d:"Brutal, pragmatic Chapter notorious for disregarding civilian lives and allied Imperial forces in pursuit of victory."},
+  {id:"relictors", name:"Relictors", f:"u-m36", p:"unknown", n:"Founded in M36; Founding number unstated.", d:"Chapter that turns Chaos-tainted relics against the enemy, a practice that brought down the censure of the Inquisition."},
+  {id:"crimson-sabres", name:"Crimson Sabres", f:"unrec", p:"unknown", s:"renegade", n:"Founding and progenitor unknown; their earliest records date to the dawn of M36. Declared renegade in M41.", d:"Chapter of unknown origin that massacred a cult and was declared renegade; it became the Crimson Slaughter."},
+  {id:"blood-ravens", name:"Blood Ravens", f:"unrec", p:"unknown", c:["#7a1414","#e6e2d8"], n:"Both Founding and gene-seed are unknown, even to the Chapter itself.", d:"Chapter obsessed with gathering knowledge and relics and rich in psykers, whose own Founding and gene-seed are a mystery, even to itself."},
+
+  // Added from the 2d4chan Founding navigation list and Lexicanum
+  {id:"lions-sable", name:"Lions Sable", f:"f2", p:"dark-angels", s:"lost", n:"Destroyed in a trap set by Cypher shortly before the Beheading; their records were erased.", d:"A 2nd Founding Dark Angels successor destroyed in a trap laid by Cypher before the Beheading; their records were erased to hide it."},
+  {id:"destroyers", name:"Destroyers", f:"f2", p:"white-scars"},
+  {id:"storm-lords", name:"Storm Lords", f:"f2", p:"white-scars"},
+  {id:"aurora-chapter", name:"Aurora Chapter", f:"f2", p:"ultramarines", n:"Sources conflict: some place their Founding much later."},
+  {id:"desert-lions", name:"Desert Lions", f:"f2", p:"ultramarines"},
+  {id:"doom-eagles", name:"Doom Eagles", f:"f2", p:"ultramarines"},
+  {id:"eagle-warriors", name:"Eagle Warriors", f:"f2", p:"ultramarines"},
+  {id:"inceptors", name:"Inceptors", f:"f2", p:"ultramarines"},
+  {id:"mortifactors", name:"Mortifactors", f:"f2", p:"ultramarines", d:"Ultramarines successor that strayed far from its roots into death-obsessed rites, decorating armour and fortress with the bones of the fallen."},
+  {id:"nemesis", name:"Nemesis", f:"f2", p:"ultramarines"},
+  {id:"obsidian-glaives", name:"Obsidian Glaives", f:"f2", p:"ultramarines"},
+  {id:"praetors-of-orpheus", name:"Praetors of Orpheus", f:"f2", p:"ultramarines", d:"Codex-compliant Ultramarines Primogenitor Chapter of the 2nd Founding, defenders of the Orpheus Sector against the Necrons."},
+  {id:"silver-eagles", name:"Silver Eagles", f:"f2", p:"ultramarines"},
+  {id:"white-consuls", name:"White Consuls", f:"f2", p:"ultramarines"},
+  {id:"yellow-jackets", name:"Yellow Jackets", f:"f2", p:"ultramarines"},
+  {id:"red-hunters", name:"Red Hunters", f:"f2", p:"unknown", n:"Implied to be 2nd Founding; the Inquisition routinely wipes their records, including their progenitor."},
+  {id:"purple-stars", name:"Purple Stars", f:"f2", p:"unknown", n:"Rumoured to have close ties to the Adeptus Mechanicus and the Inquisition."},
+  {id:"angels-porphyr", name:"Angels Porphyr", f:"u-m31", p:"blood-angels"},
+  {id:"iron-knights", name:"Iron Knights", f:"u-m32", p:"imperial-fists", n:"Founded before the 4th Founding."},
+  {id:"sons-of-guilliman", name:"Sons of Guilliman", f:"u-m32", p:"ultramarines"},
+  {id:"flesh-eaters", name:"Flesh Eaters", f:"u-m32", p:"unknown"},
+  {id:"night-swords", name:"Night Swords", f:"u-m32", p:"unknown"},
+  {id:"space-sharks", name:"Space Sharks", f:"u-m32", p:"unknown", n:"Fought on the loyalist side in the Badab War."},
+  {id:"angels-of-fire", name:"Angels of Fire", f:"u-m36", p:"unknown"},
+  {id:"avenging-sons", name:"Avenging Sons", f:"u-m36", p:"unknown"},
+  {id:"celebrants", name:"Celebrants", f:"u-m36", p:"unknown"},
+  {id:"tiger-claws", name:"Tiger Claws", f:"f21", p:"unknown", n:"Believed by some to be 21st Founding; unconfirmed."},
+  {id:"steel-confessors", name:"Steel Confessors", f:"edict", p:"unknown", n:"Raised outside a formal Founding and later ratified by edict."},
+  {id:"angels-of-vigilance", name:"Angels of Vigilance", f:"u-late", p:"dark-angels", n:"Some sources suggest the 2nd Founding instead.", d:"One of the Unforgiven, the Dark Angels’ inner bloodline. Like their parent Chapter, they are bound to the secret hunt for the Fallen."},
+  {id:"disciples-of-caliban", name:"Disciples of Caliban", f:"u-late", p:"dark-angels", d:"One of the Unforgiven, the Dark Angels’ inner bloodline, named for the Lion’s lost homeworld and bound to the hunt for the Fallen."},
+  {id:"angels-excelsis", name:"Angels Excelsis", f:"u-late", p:"unknown"},
+  {id:"dark-hunters", name:"Dark Hunters", f:"u-late", p:"unknown"},
+  {id:"golden-sons", name:"Golden Sons", f:"u-late", p:"unknown"},
+  {id:"knights-of-the-raven", name:"Knights of the Raven", f:"u-late", p:"unknown"},
+  {id:"subjugators", name:"Subjugators", f:"u-late", p:"unknown"},
+  {id:"omega-marines", name:"Omega Marines", f:"u-late", p:"unknown", n:"Raised in M40; Founding number unstated."},
+  {id:"fulminators", name:"Fulminators", f:"ultima", p:"ultramarines"},
+  {id:"wolfspear", name:"Wolfspear", f:"ultima", p:"space-wolves", n:"Raised as a Bound Chapter, dedicated to a single task."},
+  {id:"angels-of-defiance", name:"Angels of Defiance", f:"ultima", p:"unknown"},
+  {id:"black-vipers", name:"Black Vipers", f:"ultima", p:"unknown"},
+  {id:"blades-of-vengeance", name:"Blades of Vengeance", f:"ultima", p:"unknown"},
+  {id:"castellans-of-the-rift", name:"Castellans of the Rift", f:"ultima", p:"unknown", d:"Primaris Chapter of the Ultima Founding, bound to guard a stretch of the Cicatrix Maledictum, the great Warp rift."},
+  {id:"covenant-of-fire", name:"Covenant of Fire", f:"ultima", p:"unknown"},
+  {id:"dark-krakens", name:"Dark Krakens", f:"ultima", p:"unknown"},
+  {id:"knights-cerulean", name:"Knights Cerulean", f:"ultima", p:"unknown"},
+  {id:"knights-of-the-chalice", name:"Knights of the Chalice", f:"ultima", p:"unknown"},
+  {id:"knights-of-thunder", name:"Knights of Thunder", f:"ultima", p:"unknown"},
+  {id:"nemesors", name:"Nemesors", f:"ultima", p:"unknown"},
+  {id:"praetors-of-ultramar", name:"Praetors of Ultramar", f:"ultima", p:"unknown"},
+  {id:"prime-absolvers", name:"Prime Absolvers", f:"ultima", p:"unknown"},
+  {id:"rift-stalkers", name:"Rift Stalkers", f:"ultima", p:"unknown"},
+  {id:"silver-drakes", name:"Silver Drakes", f:"ultima", p:"unknown"},
+  {id:"sons-of-the-phoenix", name:"Sons of the Phoenix", f:"ultima", p:"unknown"},
+  {id:"storm-reapers", name:"Storm Reapers", f:"ultima", p:"unknown"},
+  {id:"umbral-knights", name:"Umbral Knights", f:"ultima", p:"unknown"},
+  {id:"unnumbered-sons", name:"Unnumbered Sons", f:"ultima", p:"unknown"},
+  {id:"valiant-blades", name:"Valiant Blades", f:"ultima", p:"unknown"},
+  {id:"void-tridents", name:"Void Tridents", f:"ultima", p:"unknown"},
+  {id:"guardians-of-the-covenant", name:"Guardians of the Covenant", f:"unrec", p:"dark-angels", d:"One of the Unforgiven, the Dark Angels’ inner bloodline, known for its intense piety and its part in the hunt for the Fallen."},
+  {id:"knights-of-blood", name:"Knights of Blood", f:"unrec", p:"blood-angels"},
+  {id:"hammers-of-dorn", name:"Hammers of Dorn", f:"unrec", p:"imperial-fists"},
+  {id:"marines-mordant", name:"Marines Mordant", f:"unrec", p:"ultramarines", s:"lost", n:"Destroyed in the late 41st Millennium through the schemes of the Alpha Legion’s Quetzel Carthach, along with three other Chapters."},
+  {id:"ashen-claws", name:"Ashen Claws", f:"unrec", p:"raven-guard", n:"Exiles from the Raven Guard Legion; only nominally loyal, and never sanctioned by a Founding."},
+  {id:"hawk-lords", name:"Hawk Lords", f:"unrec", p:"unknown", n:"Sources disagree on whether they descend from the Ultramarines or the Raven Guard."},
+  {id:"consecrators", name:"Consecrators", f:"unrec", p:"unknown", n:"Raised outside any recorded Founding, probably after the 2nd."},
+  {id:"red-seraphs", name:"Red Seraphs", f:"unrec", p:"unknown", n:"A splinter of the Blood Eagles Chapter, created outside any Founding."},
+  {id:"deathwatch", name:"Deathwatch", f:"unrec", p:"unknown", n:"The Chamber Militant of the Ordo Xenos, made up of battle-brothers seconded from many Chapters.", d:"The Ordo Xenos’ alien-hunters, formed from battle-brothers seconded by many Chapters, wearing black armour with one pauldron in their old colours."},
+  {id:"legion-of-the-damned", name:"Legion of the Damned", f:"unrec", p:"unknown", n:"Spectral warriors rumoured to be the lost Fire Hawks.", d:"Ghostly warriors in black, flame-wreathed armour who appear unbidden in desperate battles, then vanish; rumoured to be the lost Fire Hawks."},
+  {id:"astartes-praeses", name:"Astartes Praeses", f:"unrec", p:"unknown", n:"A Chapter bound to a single region of space."},
+  {id:"tridents-of-the-atox", name:"Tridents of the Atox", f:"unrec", p:"unknown", s:"lost", n:"Destroyed by Tyranids led by the Swarmlord."},
+  {id:"night-reapers", name:"Night Reapers", f:"unrec", p:"unknown", s:"renegade", n:"A once-loyal Chapter that turned to heresy."},
+  {id:"absolvers", name:"Absolvers", f:"unrec", p:"unknown"},
+  {id:"accipiters", name:"Accipiters", f:"unrec", p:"unknown"},
+  {id:"adulators", name:"Adulators", f:"unrec", p:"unknown"},
+  {id:"angel-guard", name:"Angel Guard", f:"unrec", p:"unknown"},
+  {id:"angels-eradicant", name:"Angels Eradicant", f:"unrec", p:"unknown"},
+  {id:"angels-of-retribution", name:"Angels of Retribution", f:"unrec", p:"unknown"},
+  {id:"astral-knights", name:"Astral Knights", f:"unrec", p:"unknown"},
+  {id:"blood-swords", name:"Blood Swords", f:"unrec", p:"unknown"},
+  {id:"brazen-drakes", name:"Brazen Drakes", f:"unrec", p:"unknown"},
+  {id:"bringers-of-judgement", name:"Bringers of Judgement", f:"unrec", p:"unknown"},
+  {id:"brothers-penitent", name:"Brothers Penitent", f:"unrec", p:"unknown"},
+  {id:"carmine-blades", name:"Carmine Blades", f:"unrec", p:"unknown"},
+  {id:"cowled-wardens", name:"Cowled Wardens", f:"unrec", p:"unknown"},
+  {id:"crimson-castellans", name:"Crimson Castellans", f:"unrec", p:"unknown"},
+  {id:"crimson-consuls", name:"Crimson Consuls", f:"unrec", p:"unknown"},
+  {id:"crimson-scythes", name:"Crimson Scythes", f:"unrec", p:"unknown"},
+  {id:"dark-hands", name:"Dark Hands", f:"unrec", p:"unknown"},
+  {id:"dark-sons", name:"Dark Sons", f:"unrec", p:"unknown"},
+  {id:"death-eagles", name:"Death Eagles", f:"unrec", p:"unknown"},
+  {id:"doom-warriors", name:"Doom Warriors", f:"unrec", p:"unknown"},
+  {id:"emperors-shadows", name:"Emperor’s Shadows", f:"unrec", p:"unknown"},
+  {id:"fire-lords", name:"Fire Lords", f:"unrec", p:"unknown"},
+  {id:"graven-spectres", name:"Graven Spectres", f:"unrec", p:"unknown"},
+  {id:"harbingers-chapter", name:"Harbingers", f:"unrec", p:"unknown", lex:"Harbingers (Chapter)"},
+  {id:"invaders", name:"Invaders", f:"unrec", p:"unknown"},
+  {id:"iron-crusaders", name:"Iron Crusaders", f:"unrec", p:"unknown"},
+  {id:"iron-talons", name:"Iron Talons", f:"unrec", p:"unknown"},
+  {id:"jade-dragons", name:"Jade Dragons", f:"unrec", p:"unknown"},
+  {id:"knights-unyielding", name:"Knights Unyielding", f:"unrec", p:"unknown"},
+  {id:"marines-exemplar", name:"Marines Exemplar", f:"unrec", p:"unknown"},
+  {id:"the-nameless", name:"The Nameless", f:"unrec", p:"unknown"},
+  {id:"night-watch", name:"Night Watch", f:"unrec", p:"unknown"},
+  {id:"rainbow-warriors", name:"Rainbow Warriors", f:"unrec", p:"unknown"},
+  {id:"reclaimers", name:"Reclaimers", f:"unrec", p:"unknown"},
+  {id:"red-scorpions", name:"Red Scorpions", f:"unrec", p:"unknown", d:"Zealous Chapter obsessed with gene-seed purity, which fought for the loyalists in the Badab War under Carab Culln."},
+  {id:"red-templars", name:"Red Templars", f:"unrec", p:"unknown"},
+  {id:"retributors", name:"Retributors", f:"unrec", p:"unknown"},
+  {id:"shadow-wolves", name:"Shadow Wolves", f:"unrec", p:"unknown"},
+  {id:"solar-hawks", name:"Solar Hawks", f:"unrec", p:"unknown"},
+  {id:"sons-of-orar", name:"Sons of Orar", f:"unrec", p:"unknown"},
+  {id:"star-dragons", name:"Star Dragons", f:"unrec", p:"unknown"},
+  {id:"stormwatchers", name:"Stormwatchers", f:"unrec", p:"unknown"},
+  {id:"storm-giants", name:"Storm Giants", f:"unrec", p:"unknown"},
+  {id:"storm-wardens", name:"Storm Wardens", f:"unrec", p:"unknown"},
+  {id:"storm-wings", name:"Storm Wings", f:"unrec", p:"unknown"},
+  {id:"valedictors", name:"Valedictors", f:"unrec", p:"unknown"},
+  {id:"viper-legion", name:"Viper Legion", f:"unrec", p:"unknown"},
+  {id:"vorpal-swords", name:"Vorpal Swords", f:"unrec", p:"unknown"},
+  {id:"white-templars", name:"White Templars", f:"unrec", p:"unknown"},
 
   // Fallen to Chaos
-  {id:"red-corsairs", name:"Red Corsairs", f:"fallen", p:"astral-claws", s:"traitor", kind:"renegade", c:["#8f1b1b","#1a1a1a"], n:"Survivors of the Astral Claws under Huron Blackheart, now a vast pirate fleet."},
-  {id:"crimson-slaughter", name:"Crimson Slaughter", f:"fallen", p:"crimson-sabres", s:"traitor", kind:"renegade", c:["#8a1a1a","#c9a54a"], n:"The Crimson Sabres, transformed by the Warp after being declared renegade."}
+  {id:"red-corsairs", name:"Red Corsairs", f:"fallen", p:"astral-claws", s:"traitor", kind:"renegade", c:["#8f1b1b","#1a1a1a"], n:"Survivors of the Astral Claws under Huron Blackheart, now a vast pirate fleet.", d:"Huron Blackheart’s renegades from the Astral Claws: a vast pirate fleet based in the Maelstrom that recruits deserters from other Chapters."},
+  {id:"crimson-slaughter", name:"Crimson Slaughter", f:"fallen", p:"crimson-sabres", s:"traitor", kind:"renegade", c:["#8a1a1a","#c9a54a"], n:"The Crimson Sabres, transformed by the Warp after being declared renegade.", d:"Former Crimson Sabres, haunted by the whispering ghosts of those they slew, who turned to Chaos to silence the voices."}
 ];
 
 /* ============================ setup ============================ */
@@ -420,24 +585,33 @@ function fits(prof, t, occ) {
 // Siblings in different columns may share a row; the parent's own row is kept clear in every
 // column its lines cross, so a line never runs through a shield or name.
 function pack(n) {
-  const vk = collapsed.has(n.id) ? [] : visKids(n);
-  n._vk = vk; n.open = vk.length > 0;
+  // Chapters with unrecorded gene-seed belong to a hidden grouping node. They are packed as loose
+  // entries here (after the connected children, filling free space from the top) with no line drawn.
+  const all = collapsed.has(n.id) ? [] : visKids(n);
+  const real = all.filter(k => k.s !== "group");
+  const loose = all.filter(k => k.s === "group").flatMap(g => collapsed.has(g.id) ? [] : visKids(g));
+  const vk = real.concat(loose), nReal = real.length;
+  n._vk = vk; n.open = nReal > 0;
   const c0 = colPos[n.f];
   if (!vk.length) { n._offs = []; return new Map([[c0, [[0, 0]]]]); }
   const profs = vk.map(pack);
-  const maxC = Math.max(...vk.map(k => colPos[k.f]));
+  const maxC = nReal ? Math.max(...real.map(k => colPos[k.f])) : c0;
   const attempt = C => {
-    const occ = new Map(), offs = [], last = new Map();
+    const occ = new Map(), offs = [], last = new Map(), lastLoose = new Map();
+    let top = null;
     const add = (c, lo, hi) => { if (!occ.has(c)) occ.set(c, []); occ.get(c).push([lo, hi]); };
     if (C !== null) for (let c = c0 + 1; c < maxC; c++) add(c, C, C);
     vk.forEach((k, i) => {
-      const kc = colPos[k.f];
-      let t = last.has(kc) ? last.get(kc) + 1 : 0;
+      const kc = colPos[k.f], isLoose = i >= nReal;
+      if (isLoose && top === null) { top = 0; for (const ivs of occ.values()) for (const [lo] of ivs) top = Math.min(top, lo); }
+      const L = isLoose ? lastLoose : last;
+      let t = L.has(kc) ? L.get(kc) + 1 : (isLoose ? top : 0);
       while (!fits(profs[i], t, occ)) t++;
-      offs.push(t); last.set(kc, t);
+      offs.push(t); L.set(kc, t);
       for (const [c, ivs] of profs[i]) for (const [lo, hi] of ivs) add(c, lo + t, hi + t);
     });
-    const mid = (Math.min(...offs) + Math.max(...offs)) / 2;
+    const ro = nReal ? offs.slice(0, nReal) : [0];
+    const mid = (Math.min(...ro) + Math.max(...ro)) / 2;
     return { occ, offs, mid, P: C === null ? mid : C };
   };
   let res = attempt(null);
@@ -466,6 +640,65 @@ function layout() {
   totalH = PADT + (max - min + 1) * ROWH + 40;
 }
 
+/* Long names wrap onto a second line (the root onto up to three) instead of running into the next column */
+const measureCtx = document.createElement("canvas").getContext("2d");
+function labelFont(n) {
+  if (n.s === "root") return '700 15px Cinzel, "Times New Roman", serif';
+  const italic = ["group", "lost", "expunged"].includes(n.s) ? "italic " : "";
+  return `${italic}${n.num ? 700 : 400} 14px "Alegreya Sans", "Gill Sans", sans-serif`;
+}
+function wrapLines(text, font, maxW, maxLines) {
+  measureCtx.font = font;
+  const lines = []; let cur = "";
+  for (const w of text.split(" ")) {
+    const t = cur ? cur + " " + w : w;
+    if (!cur || measureCtx.measureText(t).width <= maxW) cur = t; else { lines.push(cur); cur = w; }
+  }
+  if (cur) lines.push(cur);
+  if (lines.length > maxLines) lines.splice(maxLines - 1, lines.length, lines.slice(maxLines - 1).join(" "));
+  return lines;
+}
+function labelMarkup(n, x, has) {
+  const token = has && collapsed.has(n.id) ? `(+${countDesc(n)})` : "";
+  const maxW = (has ? BW - 20 : 210 - 6) - x;   // stop before the knob, or before the next column
+  const lines = wrapLines(n.name + (token ? " " + token : ""), labelFont(n), maxW, n.s === "root" ? 3 : 2);
+  const lh = n.s === "root" ? 17 : 15, y0 = 1 - (lines.length - 1) * lh / 2;
+  const spans = lines.map((ln, i) => {
+    let body = esc(ln);
+    if (token && i === lines.length - 1 && ln.endsWith(token)) {
+      const main = ln.slice(0, -token.length).trimEnd();
+      body = `${esc(main)}<tspan class="count">${main ? " " : ""}${token}</tspan>`;
+    }
+    return `<tspan x="${x}" y="${y0 + i * lh}">${body}</tspan>`;
+  }).join("");
+  return `<text class="lbl" text-anchor="start">${spans}</text>`;
+}
+
+/* A soft golden radiance behind the root, kept inside the first column */
+function radianceMarkup() {
+  const root = byId.emperor;
+  if (root.y == null || !(root.f in colPos)) return "";
+  const x0 = colLeft(colPos[root.f]), cx = nodeL(root) + 92, cy = root.y, R = 230;
+  let rays = "";
+  for (let i = 0; i < 32; i++) {
+    const a = (i / 32) * Math.PI * 2 + 0.05, long = i % 2 === 0;
+    const len = long ? R : R * 0.62, w = (long ? 1.9 : 1.2) * Math.PI / 180;
+    const p = (ang, r) => `${(Math.cos(ang) * r).toFixed(1)} ${(Math.sin(ang) * r).toFixed(1)}`;
+    rays += `<path d="M0 0L${p(a - w, len)}L${p(a + w, len)}Z"/>`;
+  }
+  return `<defs>
+    <radialGradient id="radGlow"><stop offset="0" style="stop-color:var(--brass);stop-opacity:.28"/><stop offset=".45" style="stop-color:var(--brass);stop-opacity:.09"/><stop offset="1" style="stop-color:var(--brass);stop-opacity:0"/></radialGradient>
+    <radialGradient id="radRay" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="${R}"><stop offset=".08" style="stop-color:var(--brass);stop-opacity:.32"/><stop offset="1" style="stop-color:var(--brass);stop-opacity:0"/></radialGradient>
+    <clipPath id="radClip"><rect x="${x0}" y="0" width="${COLW}" height="${totalH}"/></clipPath>
+  </defs>
+  <g clip-path="url(#radClip)" aria-hidden="true" style="pointer-events:none">
+    <g transform="translate(${cx},${cy})">
+      <circle r="${R}" fill="url(#radGlow)"/>
+      <g fill="url(#radRay)">${rays}</g>
+    </g>
+  </g>`;
+}
+
 function shieldMarkup(n) {
   const [a, b] = n.c;
   const img = heraldryUrl(n);
@@ -491,10 +724,12 @@ function render() {
       ? `<rect class="band unrec" x="${colLeft(i) + 4}" y="0" width="${COLW - 8}" height="${totalH}" rx="6"/>`
       : `<rect class="band${i % 2 ? " alt" : ""}" x="${colLeft(i)}" y="0" width="${COLW}" height="${totalH}"/>`;
   });
+  out += radianceMarkup();
   for (const n of laid) {
     if (!n.open) continue;
     const s = nodeL(n) + BW;
-    for (const k of visKids(n)) {
+    for (const k of n._vk) {
+      if (k.p !== n.id) continue;   // loose Chapters get no line
       const cL = nodeL(k);
       out += `<path class="edge${k.s === "traitor" ? " to-traitor" : ""}" d="M${s} ${n.y}H${cL - 30}C${cL - 14} ${n.y} ${cL - 14} ${k.y} ${cL - 2} ${k.y}"/>`;
     }
@@ -507,7 +742,7 @@ function render() {
     out += `<g class="${cls}" data-id="${n.id}" transform="translate(${L},${n.y})" tabindex="0" role="button" aria-label="${esc(n.name)}${has ? (collapsed.has(n.id) ? ", collapsed" : ", expanded") : ""}">` +
       `<rect class="hit" x="-6" y="-15" width="${BW + 10}" height="30" rx="4"/>` +
       (isGroup ? "" : `<g transform="translate(4,-12)">${shieldMarkup(n)}</g>`) +
-      `<text class="lbl" x="${isGroup ? 8 : 32}" y="1" text-anchor="start">${esc(n.name)}${count}</text>` +
+      labelMarkup(n, isGroup ? 8 : 32, has) +
       (has ? `<g class="knob" data-act="toggle" transform="translate(${BW - 8},0)"><circle r="8"/><text y="0">${collapsed.has(n.id) ? "+" : "−"}</text></g>` : "") +
       `</g>`;
   }
@@ -528,6 +763,7 @@ function clampView() {
 }
 
 function apply() {
+  const mk = minZoom(); if (view.k < mk) view.k = mk;
   clampView();
   // Star layers drift slower than the tree for a sense of depth; the nebulae stay put
   const sx = view.tx, sy = view.ty;
@@ -585,11 +821,34 @@ function wikiLinks(n) {
   const t = s => encodeURIComponent(s.replace(/’/g, "'").replace(/ /g, "_")).replace(/%2F/g, "/");
   const lex = n.lex || n.name, fan = n.fan || n.name, d4 = n.d4 || n.name;
   return [
-    { label: "Lexicanum", sub: "wh40k.lexicanum.com", url: `https://wh40k.lexicanum.com/wiki/${t(lex)}` },
-    { label: "Warhammer 40k Wiki", sub: "warhammer40k.fandom.com", url: `https://warhammer40k.fandom.com/wiki/${t(fan)}` },
-    { label: "1d4chan", sub: "1d4chan.org", url: `https://1d4chan.org/wiki/${t(d4)}` },
-    { label: "Search Lexicanum", sub: "If the page above is a disambiguation", url: `https://wh40k.lexicanum.com/mediawiki/index.php?search=${encodeURIComponent(n.name.replace(/’/g, "'"))}` }
+    { label: "Lexicanum", sub: "lexicanum.com", url: `https://wh40k.lexicanum.com/wiki/${t(lex)}` },
+    { label: "40k Wiki", sub: "Fandom", url: `https://warhammer40k.fandom.com/wiki/${t(fan)}` },
+    { label: "2d4chan", sub: "formerly 1d4chan", url: `https://2d4chan.org/wiki/${t(d4)}` }
   ];
+}
+
+/* Every entry gets a short description: hand-written where the lore is well documented,
+   otherwise built from what is recorded (Founding, progenitor, fate) without inventing anything */
+const HEDGE = /conflict|unconfirmed|some (lists|sources|authors)|speculated|believed|according to|implied|disagree|another places|most likely/i;
+function describe(n) {
+  const col = COLS[colIdx[n.f]], parent = byId[n.p], known = parent && parent.s !== "group";
+  const extra = n.n && !HEDGE.test(n.n) ? " " + n.n : "";   // recorded facts, used in place of filler
+  const fate = extra ? "" : n.s === "lost" ? " The Chapter is now lost." : n.s === "renegade" ? " It has since turned renegade." : "";
+  if (n.f === "ultima")
+    return `A Primaris Chapter raised in the Ultima Founding for Guilliman’s Indomitus Crusade.${known ? ` Its gene-seed descends from the ${parent.name}.` : " Its progenitor line has not been recorded."}${extra}${fate}`;
+  const numbered = /^\d/.test(col.name);
+  if (known) {
+    const lead = col.id === "unrec" ? `A successor Chapter of the ${parent.name} whose Founding is unrecorded.`
+      : numbered ? `A ${col.name} successor Chapter of the ${parent.name}.`
+      : `A successor Chapter of the ${parent.name}, raised in ${col.date}.`;
+    const flavour = parent.id === "dark-angels" ? " One of the Unforgiven, it shares the secret hunt for the Fallen."
+      : parent.id === "blood-angels" ? " Like all of Sanguinius’s sons, it bears the Red Thirst and Black Rage." : "";
+    return lead + flavour + (extra || (flavour ? "" : " Beyond its lineage, little of its history has been recorded.")) + fate;
+  }
+  const lead = col.id === "unrec" ? "A Chapter whose Founding and progenitor Legion are both unrecorded."
+    : numbered ? `A ${col.name} Chapter whose progenitor Legion is unrecorded.`
+    : `A Chapter raised in ${col.date} whose progenitor Legion is unrecorded.`;
+  return lead + (extra || " Little is known of it beyond its name and heraldry.") + fate;
 }
 
 function statusText(n) {
@@ -601,7 +860,7 @@ function statusText(n) {
 
 function showPanel(n) {
   const col = COLS[colIdx[n.f]], parent = byId[n.p];
-  const vk = kids[n.id] || [];
+  const vk = (kids[n.id] || []).filter(k => k.s !== "group");
   const img = heraldryUrl(n);
   const mark = n.num || n.name.split(/\s+/).filter(w => !/^(of|the)$/i.test(w)).map(w => w[0]).join("").slice(0, 2);
   const big = n.s === "group" ? "" : `<div class="shield">
@@ -617,12 +876,15 @@ function showPanel(n) {
     <dl>
       ${n.s === "root" ? "" : `<dt>${col.era ? "Era" : "Founding"}</dt><dd>${esc(col.name)}${col.ep ? `, ${esc(col.ep.toLowerCase().startsWith("the") ? col.ep : col.ep)}` : ""}<br><span style="color:var(--muted)">${esc(col.date)}</span>${col.note ? `<br><span style="color:var(--muted);font-size:.88rem">${esc(col.note)}</span>` : ""}</dd>`}
       ${n.num ? `<dt>Legion</dt><dd>${n.num}</dd>` : ""}
-      ${parent && n.s !== "group" ? `<dt>${n.s === "traitor" && !n.num ? "Origin" : "Gene-seed"}</dt><dd><button class="linkish" data-go="${parent.id}">${esc(parent.name)}</button></dd>` : ""}
+      ${parent && parent.s === "group" ? `<dt>Gene-seed</dt><dd>Unrecorded</dd>` : ""}
+      ${parent && parent.s !== "group" && n.s !== "group" ? `<dt>${n.s === "traitor" && !n.num ? "Origin" : "Gene-seed"}</dt><dd><button class="linkish" data-go="${parent.id}">${esc(parent.name)}</button></dd>` : ""}
       ${vk.length ? `<dt>${n.s === "group" ? "Chapters" : n.s === "traitor" ? "Offshoots" : "Successors"}</dt><dd class="kids">${vk.map(k => `<button class="linkish" data-go="${k.id}">${esc(k.name)}</button>`).join("")}</dd>` : ""}
     </dl>
-    ${n.n ? `<p class="note">${esc(n.n)}</p>` : ""}
+    ${n.s === "group" ? "" : `<p class="note">${esc(n.d || describe(n))}</p>`}
+    ${n.n && HEDGE.test(n.n) ? `<p class="note aside">${esc(n.n)}</p>` : ""}
     ${n.s === "group" ? "" : `<h3>Read more</h3><div class="wikis">${wikiLinks(n).map(l => `<a href="${l.url}" target="_blank" rel="noopener noreferrer">${l.label}<small>${esc(l.sub)}</small></a>`).join("")}</div>`}
     ${HERALDRY_SOURCE.url && img ? `<p class="fine">Heraldry: <a href="${esc(HERALDRY_SOURCE.url)}" target="_blank" rel="noopener noreferrer">${esc(HERALDRY_SOURCE.label || HERALDRY_SOURCE.url)}</a></p>` : ""}
+    ${n.s === "group" ? "" : `<p style="margin-top:1rem"><button class="linkish" data-feedback="${n.id}">Suggest a correction to this entry</button></p>`}
     ${n.s === "group" ? "" : `<p class="fine">${img ? "" : "Shield shows an approximate colour scheme, not the badge. "}${n.inherited ? "Colours inherited from the progenitor until filled in." : ""}</p>`}`;
   panel.classList.add("open");
 }
@@ -651,9 +913,16 @@ function refilter() {
   if (selected && !byId[selected].vis) closePanel(); else { render(); apply(); }
 }
 
+// Furthest zoom-out: the whole tree on screen, but never so small that names become unreadable
+function minZoom() {
+  const r = stage.getBoundingClientRect();
+  const fitK = Math.min(r.width / (NC * COLW + 40), (r.height - 10) / totalH);
+  return Math.min(1, Math.max(0.3, fitK));
+}
+
 function fit() {
   const r = stage.getBoundingClientRect(), W = NC * COLW;
-  view.k = Math.max(0.15, Math.min(r.width / (W + 40), (r.height - 10) / totalH, 1));
+  view.k = minZoom();
   view.tx = (r.width - W * view.k) / 2;
   view.ty = 0;
   apply();
@@ -670,7 +939,7 @@ function initialView() {
 
 function zoomAt(cx, cy, f) {
   const r = stage.getBoundingClientRect(), x = cx - r.left, y = cy - r.top;
-  const nk = Math.max(0.15, Math.min(2.4, view.k * f));
+  const nk = Math.max(minZoom(), Math.min(2.4, view.k * f));
   view.tx = x - (x - view.tx) * nk / view.k;
   view.ty = y - (y - view.ty) * nk / view.k;
   view.k = nk; apply();
@@ -727,11 +996,13 @@ world.addEventListener("keydown", e => {
   else if (e.key === " ") { e.preventDefault(); if (visKids(byId[id]).length) toggle(id); }
 });
 panel.addEventListener("click", e => {
+  const fbk = e.target.closest("[data-feedback]");
+  if (fbk) { openFeedback("Correction", byId[fbk.dataset.feedback].name); return; }
   const go = e.target.closest("[data-go]");
   if (go) select(go.dataset.go, { center: true });
   if (e.target.closest("#closePanel")) closePanel();
 });
-document.addEventListener("keydown", e => { if (e.key === "Escape" && panel.classList.contains("open")) closePanel(); });
+document.addEventListener("keydown", e => { if (e.key === "Escape" && !fb.open && panel.classList.contains("open")) closePanel(); });
 
 document.getElementById("search").addEventListener("change", e => {
   const q = e.target.value.trim().toLowerCase().replace(/'/g, "’"); if (!q) return;
@@ -765,6 +1036,59 @@ window.addEventListener("hashchange", () => {
 });
 
 /* ============================ boot ============================ */
+/* ============================ feedback ============================ */
+const fb = document.getElementById("fb");
+function openFeedback(type = "Suggestion", entry = "") {
+  document.getElementById("fbType").value = type;
+  document.getElementById("fbEntry").value = entry;
+  document.getElementById("fbMsg").value = "";
+  document.getElementById("fbSend").disabled = false;
+  document.getElementById("fbStatus").textContent = "";
+  fb.showModal();
+  document.getElementById("fbMsg").focus();
+}
+document.getElementById("feedbackBtn").addEventListener("click", () => openFeedback("Suggestion", selected ? byId[selected].name : ""));
+document.getElementById("fbCancel").addEventListener("click", () => fb.close());
+document.getElementById("fbSend").addEventListener("click", async () => {
+  const type = document.getElementById("fbType").value;
+  const entry = document.getElementById("fbEntry").value.trim();
+  const msg = document.getElementById("fbMsg").value.trim();
+  const status = document.getElementById("fbStatus");
+  if (!msg) { status.textContent = "Please add some details first."; return; }
+  const title = `${type}${entry ? ": " + entry : ""}`;
+  const body = `${msg}\n\n---\nType: ${type}${entry ? "\nEntry: " + entry : ""}\nPage: ${location.href}`;
+  const from = document.getElementById("fbFrom").value.trim();
+  const sendBtn = document.getElementById("fbSend");
+  const copyFallback = async lead => {
+    try { await navigator.clipboard.writeText(title + "\n\n" + body); status.textContent = lead + " Your message was copied to the clipboard."; }
+    catch { status.textContent = lead + " Please copy your message and try again later."; }
+  };
+  if (FEEDBACK.formspree) {
+    sendBtn.disabled = true; status.textContent = "Sending…";
+    try {
+      const res = await fetch(`https://formspree.io/f/${FEEDBACK.formspree}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Accept": "application/json" },
+        body: JSON.stringify({ _subject: "[Astartes lineage] " + title, type, entry, message: msg, page: location.href, ...(from ? { email: from } : {}) })
+      });
+      if (!res.ok) throw new Error(res.status);
+      status.textContent = "Thanks, your feedback has been sent.";
+      setTimeout(() => fb.close(), 1600);
+    } catch {
+      sendBtn.disabled = false;
+      await copyFallback("Sorry, that didn’t send.");
+    }
+  } else if (FEEDBACK.github) {
+    window.open(`https://github.com/${FEEDBACK.github}/issues/new?title=${encodeURIComponent(title)}&body=${encodeURIComponent(body)}`, "_blank", "noopener");
+    fb.close();
+  } else if (FEEDBACK.email) {
+    location.href = `mailto:${FEEDBACK.email}?subject=${encodeURIComponent("[Astartes lineage] " + title)}&body=${encodeURIComponent(body)}`;
+    fb.close();
+  } else {
+    await copyFallback("Feedback isn’t connected yet.");
+  }
+});
+
 /* ============================ starfield ============================ */
 const sky = document.getElementById("sky");
 function starTile(size, count, rMin, rMax, aMin, aMax, seed, rgb, k, glow) {
@@ -797,6 +1121,8 @@ matchMedia("(prefers-color-scheme: dark)").addEventListener("change", paintSky);
 
 render();
 initialView();
+// Re-wrap names once the web fonts have loaded, since their widths differ from the fallbacks
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { render(); apply(); });
 const start = location.hash.slice(1);
 if (byId[start]) select(start, { center: true, hash: false });
 </script>
