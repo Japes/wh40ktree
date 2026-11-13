@@ -210,7 +210,23 @@ const HERALDRY_SOURCE = { label: "", url: "" };
               Messages are emailed to you without your address appearing in this page.
    github / email: alternatives, used only if formspree is empty.
    With none set, the message is copied to the clipboard. */
-const FEEDBACK = { formspree: "mjywkobe", github: "", email: "" }; // e.g. the archived database page, shown as a credit link
+const FEEDBACK = { formspree: "mjywkobe", github: "", email: "" };
+
+/* ANALYTICS: GoatCounter (free for non-commercial sites, no cookies, nothing shown to visitors).
+   Set this to your GoatCounter code, the first part of your dashboard address
+   (for astartes.goatcounter.com, use "astartes"). Leave empty to disable. */
+const ANALYTICS = { goatcounter: "" };
+if (ANALYTICS.goatcounter && location.protocol.startsWith("http")) {
+  const gc = document.createElement("script");
+  gc.async = true;
+  gc.src = "https://gc.zgo.at/count.js";
+  gc.dataset.goatcounter = `https://${ANALYTICS.goatcounter}.goatcounter.com/count`;
+  document.head.appendChild(gc);
+}
+// Also records which Legions and Chapters people open, as events in the dashboard
+function trackView(n) {
+  try { if (window.goatcounter && window.goatcounter.count) window.goatcounter.count({ path: "entry/" + n.id, title: n.name, event: true }); } catch {}
+} // e.g. the archived database page, shown as a credit link
 
 /* ===================== FOUNDINGS (oldest first) ===================== */
 const COLS = [
@@ -813,6 +829,7 @@ function select(id, { center = false, hash = true } = {}) {
   selected = id;
   render();
   showPanel(n);
+  trackView(n);
   if (center) centerOn(n); else apply();
   if (hash && location.hash.slice(1) !== id) location.hash = id;
 }
