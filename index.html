@@ -60,7 +60,7 @@ header{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem 1.2rem;padding:.
 #stage #panel{-webkit-user-select:text;user-select:text;cursor:auto}
 #stage.dragging{cursor:grabbing}
 svg#tree{position:absolute;inset:0;width:100%;height:100%;display:block}
-#cols{position:absolute;top:0;left:0;right:0;height:84px;pointer-events:none;z-index:2;background:linear-gradient(var(--bg) 70%,transparent)}
+#cols{position:absolute;top:0;left:0;right:0;height:84px;pointer-events:none;z-index:2;background:var(--bg);border-bottom:1px solid var(--line)}
 .col{position:absolute;top:0;height:84px;padding:.5rem .7rem 0;border-left:1px solid var(--line);overflow:hidden;white-space:nowrap}
 .col b{display:block;font-family:var(--display);font-weight:700;font-size:.9rem;line-height:1.2;letter-spacing:.03em;color:var(--brass);overflow:hidden;text-overflow:ellipsis}
 .col i{display:block;font-size:.8rem;color:var(--ink);overflow:hidden;text-overflow:ellipsis}
@@ -203,7 +203,10 @@ svg#tree{position:absolute;inset:0;width:100%;height:100%;display:block}
    ===================================================================== */
 const HERALDRY = { /* "ultramarines": "heraldry/ultramarines.png" */ };
 const HERALDRY_PATTERN = "";
-const HERALDRY_SOURCE = { label: "", url: "" };
+// Written by fetch_heraldry.py: { id: "heraldry/<file>" } for every badge it downloaded.
+// Loaded automatically on your own host; entries without a badge keep the colour shield.
+const HERALDRY_MANIFEST = "heraldry/index.json";
+const HERALDRY_SOURCE = { label: "Warhammer 40k Wiki (Fandom)", url: "https://warhammer40k.fandom.com" };
 
 /* FEEDBACK: where the Feedback form sends messages once you self-host.
    formspree: your Formspree form ID (the part after /f/ in its endpoint, e.g. "xyzabcde").
@@ -717,6 +720,8 @@ function radianceMarkup() {
 
 function shieldMarkup(n) {
   const [a, b] = n.c;
+  // A downloaded badge replaces the colour shield entirely
+  if (HERALDRY[n.id]) return `<image href="${esc(HERALDRY[n.id])}" x="-2" y="-2" width="24" height="28" preserveAspectRatio="xMidYMid meet"/>`;
   const img = heraldryUrl(n);
   return `<path d="M0 0H10V24C6 22 0 18 0 10Z" fill="${a}"/><path d="M10 0H20V10C20 18 14 22 10 24Z" fill="${b}"/>` +
     (img ? `<image href="${esc(img)}" x="-1" y="-1" width="22" height="26" preserveAspectRatio="xMidYMid meet" onerror="this.remove()"/>` : "") +
@@ -775,7 +780,9 @@ function clampView() {
   const vh = r.height - (open && r.width <= 700 ? panel.offsetHeight : 0);
   const cw = NC * COLW * view.k, ch = totalH * view.k;
   view.tx = Math.min(Math.max(view.tx, Math.min(0, vw - cw)), Math.max(0, vw - cw));
-  view.ty = Math.min(Math.max(view.ty, Math.min(0, vh - ch)), Math.max(0, vh - ch));
+  // The heading strip is a fixed 84px on screen, so at any zoom the first row must be able to sit just below it
+  const headroom = Math.max(0, 90 - (PADT - ROWH / 2) * view.k);
+  view.ty = Math.min(Math.max(view.ty, Math.min(headroom, vh - ch)), Math.max(headroom, vh - ch));
 }
 
 function apply() {
@@ -881,8 +888,8 @@ function showPanel(n) {
   const img = heraldryUrl(n);
   const mark = n.num || n.name.split(/\s+/).filter(w => !/^(of|the)$/i.test(w)).map(w => w[0]).join("").slice(0, 2);
   const big = n.s === "group" ? "" : `<div class="shield">
-      <svg viewBox="-1 -1 22 26" aria-hidden="true">${shieldMarkup({ ...n, id: "__none" }).replace(/<image[^>]*>/, "")}
-        <text x="10" y="11.5" text-anchor="middle" dominant-baseline="middle" font-family="Cinzel, serif" font-weight="700" font-size="${mark.length > 3 ? 5 : 6.5}" fill="#fff" stroke="#000" stroke-width=".9" paint-order="stroke">${esc(mark)}</text></svg>
+      ${HERALDRY[n.id] ? "" : `<svg viewBox="-1 -1 22 26" aria-hidden="true">${shieldMarkup({ ...n, id: "__none" }).replace(/<image[^>]*>/, "")}
+        <text x="10" y="11.5" text-anchor="middle" dominant-baseline="middle" font-family="Cinzel, serif" font-weight="700" font-size="${mark.length > 3 ? 5 : 6.5}" fill="#fff" stroke="#000" stroke-width=".9" paint-order="stroke">${esc(mark)}</text></svg>`}
       ${img ? `<img src="${esc(img)}" alt="Heraldry of the ${esc(n.name)}" onerror="this.remove()">` : ""}
     </div>`;
   panel.innerHTML = `
@@ -1134,6 +1141,13 @@ function paintSky() {
   ].join(",");
 }
 paintSky();
+// Pick up downloaded badges when self-hosted (silently does nothing where the file is absent)
+if (HERALDRY_MANIFEST && location.protocol.startsWith("http")) {
+  fetch(HERALDRY_MANIFEST, { cache: "no-cache" })
+    .then(r => r.ok ? r.json() : null)
+    .then(m => { if (!m) return; Object.assign(HERALDRY, m); render(); apply(); if (selected) showPanel(byId[selected]); })
+    .catch(() => {});
+}
 matchMedia("(prefers-color-scheme: dark)").addEventListener("change", paintSky);
 
 render();
