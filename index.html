@@ -60,7 +60,14 @@ header{display:flex;flex-wrap:wrap;align-items:center;gap:.6rem 1.2rem;padding:.
 #stage #panel{-webkit-user-select:text;user-select:text;cursor:auto}
 #stage.dragging{cursor:grabbing}
 svg#tree{position:absolute;inset:0;width:100%;height:100%;display:block}
-#cols{position:absolute;top:0;left:0;right:0;height:84px;pointer-events:none;z-index:2;background:var(--bg);border-bottom:1px solid var(--line)}
+#ages{position:absolute;top:0;left:0;right:0;height:24px;z-index:3;background:var(--surface);border-bottom:1px solid var(--line);overflow:hidden}
+.age{position:absolute;top:0;height:24px;padding:0 .7rem;border-left:1px solid var(--line);font-family:var(--display);font-size:.72rem;font-weight:700;letter-spacing:.04em;line-height:24px;color:var(--brass);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.age.alt{background:var(--band-a)}
+.age[data-age]{cursor:pointer}
+.age[data-age]:hover,.age.sel{background:var(--sel)}
+.age.sel{text-decoration:underline;text-underline-offset:3px}
+.age.vague{color:var(--muted);font-family:var(--ui);font-weight:400;font-style:italic;letter-spacing:0}
+#cols{position:absolute;top:24px;left:0;right:0;height:84px;pointer-events:none;z-index:2;background:var(--bg);border-bottom:1px solid var(--line)}
 .col{position:absolute;top:0;height:84px;padding:.5rem .7rem 0;border-left:1px solid var(--line);overflow:hidden;white-space:nowrap}
 .col b{display:block;font-family:var(--display);font-weight:700;font-size:.9rem;line-height:1.2;letter-spacing:.03em;color:var(--brass);overflow:hidden;text-overflow:ellipsis}
 .col i{display:block;font-size:.8rem;color:var(--ink);overflow:hidden;text-overflow:ellipsis}
@@ -68,6 +75,9 @@ svg#tree{position:absolute;inset:0;width:100%;height:100%;display:block}
 .col.narrow i,.col.narrow span{display:none}
 .col.tiny{visibility:hidden}
 .col.unrec{border-left-style:dashed}
+#cols .col{pointer-events:auto;cursor:pointer}
+#cols .col:hover,#cols .col.sel{background:var(--sel)}
+#cols .col.sel b{text-decoration:underline;text-underline-offset:3px}
 
 .band{fill:var(--band-a)}
 .band.alt{fill:var(--band-b)}
@@ -80,8 +90,8 @@ svg#tree{position:absolute;inset:0;width:100%;height:100%;display:block}
 .node.sel .hit{fill:var(--sel);stroke:var(--brass);stroke-width:1}
 .node text.lbl{font-family:var(--ui);font-size:14px;fill:var(--ink);dominant-baseline:middle;paint-order:stroke;stroke:var(--bg);stroke-width:3.5px;stroke-linejoin:round;stroke-opacity:.85}
 #sky{position:absolute;inset:0;pointer-events:none;background-repeat:repeat,repeat,repeat,no-repeat,no-repeat,no-repeat}
-.node.legion text.lbl{font-weight:700}
-.node.root text.lbl{font-family:var(--display);font-weight:700;font-size:15px;fill:var(--brass)}
+.node.legion text.lbl{font-weight:700;font-size:17px}
+.node.root text.lbl{font-family:var(--display);font-weight:700;font-size:30px;fill:var(--brass)}
 .node.group text.lbl{font-style:italic;fill:var(--muted)}
 .node.traitor text.lbl{fill:var(--traitor)}
 .node.lost text.lbl,.node.expunged text.lbl{font-style:italic;fill:var(--muted)}
@@ -169,7 +179,8 @@ svg#tree{position:absolute;inset:0;width:100%;height:100%;display:block}
 <div id="stage">
   <div id="sky" aria-hidden="true"></div>
   <svg id="tree" aria-label="Family tree of Space Marine Legions and Chapters"><g id="world"></g></svg>
-  <div id="cols" aria-hidden="true"></div>
+  <div id="ages" aria-label="Ages of the Imperium"></div>
+  <div id="cols"></div>
   <div class="hint">Drag to pan, scroll or pinch to zoom. Click a ± knob to fold a branch.</div>
   <aside id="panel" aria-live="polite" aria-label="Details"></aside>
 </div>
@@ -1292,8 +1303,11 @@ const NODES = [
 ];
 
 /* ============================ setup ============================ */
-const COLW = 240, ROWH = 34, BW = 196, PADT = 104;
-let NC = COLS.length, colPos = {};
+// Columns listed in WIDE_COLUMNS are that many entries wide: entries fill their lanes left to right,
+// then move down a row. Every other column is one entry wide.
+const WIDE_COLUMNS = { unrec: 3, fallen: 2, warbands: 2 };
+const COLW = 240, ROWH = 34, BW = 196, PADT = 128, ROOT_KNOB_X = COLW - 30;
+let NC = COLS.length, colPos = {}, colX = [], colW = [], colV = [], colL = [], totalW = 0;
 // Era columns (traitor warbands, fallen Chapters) hold only traitors, so they drop out when traitors are hidden
 // Works out which nodes are visible under the loyalist/traitor filters.
 // A hidden node still appears, dimmed, when it is needed to connect a visible descendant.
@@ -1307,8 +1321,14 @@ function computeCols() {
     return n.vis;
   })(byId.emperor);
   const used = new Set(NODES.filter(n => n.vis).map(n => n.f));
-  colPos = {}; NC = 0;
-  COLS.forEach(c => { if (used.has(c.id)) colPos[c.id] = NC++; });
+  colPos = {}; NC = 0; colX = []; colW = []; colV = []; colL = []; totalW = 0;
+  let v = 0;
+  COLS.forEach(c => {
+    if (!used.has(c.id)) return;
+    const lanes = WIDE_COLUMNS[c.id] || 1;
+    colPos[c.id] = NC; colX[NC] = totalW; colW[NC] = lanes * COLW; colV[NC] = v; colL[NC] = lanes;
+    totalW += lanes * COLW; v += lanes; NC++;
+  });
 }
 const colIdx = Object.fromEntries(COLS.map((c, i) => [c.id, i]));
 const byId = Object.fromEntries(NODES.map(n => [n.id, n]));
@@ -1320,13 +1340,13 @@ for (const id in kids) kids[id].sort((a, b) =>
 NODES.forEach(n => { if (!n.c) { let a = byId[n.p]; while (a && !a.c) a = byId[a.p]; n.c = a ? a.c : ["#6b7280", "#3f4652"]; n.inherited = true; } });
 
 const collapsed = new Set();
-let showTraitors = true, showLoyalists = true, selected = null;
+let showTraitors = true, showLoyalists = true, selected = null, selectedCol = null;
 const view = { k: 1, tx: 0, ty: 0 };
 
 const stage = document.getElementById("stage"), world = document.getElementById("world");
 const colsEl = document.getElementById("cols"), panel = document.getElementById("panel");
-const colLeft = i => i * COLW;
-const nodeL = n => colLeft(colPos[n.f]) + 16;
+const colLeft = i => colX[i];
+const nodeL = n => colLeft(colPos[n.f]) + (n._lane || 0) * COLW + 16;
 const esc = s => String(s).replace(/[&<>"]/g, ch => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[ch]));
 const visKids = n => (kids[n.id] || []).filter(k => k.vis);
 const countDesc = n => visKids(n).reduce((a, k) => a + 1 + countDesc(k), 0);
@@ -1335,8 +1355,93 @@ const ancestors = n => { const a = []; let p = byId[n.p]; while (p) { a.push(p);
 /* column header strip */
 // Gold heading on two rows: everything before the last word, then the last word
 const twoRows = s => { const i = s.lastIndexOf(" "); return i < 0 ? esc(s) + "<br>&nbsp;" : esc(s.slice(0, i)) + "<br>" + esc(s.slice(i + 1)); };
-colsEl.innerHTML = COLS.map(c => `<div class="col${c.id === "unrec" ? " unrec" : ""}"><b>${twoRows(c.name)}</b>${c.ep ? `<i>${esc(c.ep)}</i>` : "<i>&nbsp;</i>"}<span>${esc(c.date)}</span></div>`).join("");
+colsEl.innerHTML = COLS.map(c => `<div class="col${c.id === "unrec" ? " unrec" : ""}" tabindex="0" role="button" aria-label="About the ${esc(c.name)}"><b>${twoRows(c.name)}</b>${c.ep ? `<i>${esc(c.ep)}</i>` : "<i>&nbsp;</i>"}<span>${esc(c.date)}</span></div>`).join("");
 const colEls = [...colsEl.children];
+
+/* The ages of the Imperium each column falls in. Dates are approximate; "vague" bands are this site's
+   own groupings that span several ages or none in particular. */
+const AGES = {
+  crusade: { name: "Great Crusade", dates: "c. M30 to 005.M31" },
+  heresy: { name: "Horus Heresy", dates: "005.M31 to 014.M31" },
+  rebirth: { name: "Age of Rebirth", dates: "c. M31 to M32" },
+  forging: { name: "The Forging", dates: "c. M32 to M34" },
+  interregnum: { name: "Nova Terra Interregnum", dates: "c. M35" },
+  apostasy: { name: "Age of Apostasy", dates: "c. M36" },
+  redemption: { name: "Age of Redemption", dates: "c. 020.M37 to 034.M38" },
+  waning: { name: "The Waning", dates: "M39 to mid-M41" },
+  dark: { name: "Age of the Dark Imperium", dates: "from the end of M41" },
+  several: { name: "Several ages", vague: true, dates: "Spans more than one age" },
+  all: { name: "All eras", vague: true, dates: "Not tied to one age" }
+};
+const AGE_INFO = {
+  crusade: { text: ["The Great Crusade began around the start of M30 and lasted roughly two hundred years. Led by the Emperor and the Primarchs, the Space Marine Legions reunited the scattered worlds of humanity after the Age of Strife.",
+      "It is remembered as the Imperium’s golden age, before ten thousand years of stagnation and war."],
+    links: ["Great Crusade", "Great Crusade", "Great Crusade"] },
+  heresy: { text: ["Horus, the Emperor’s favoured son, led nine of the Legions in rebellion. Its outbreak ended the Great Crusade, and the war ended at the Siege of Terra, where Horus was slain but the Emperor was mortally wounded and the Imperium left on the brink of collapse."],
+    links: ["Horus Heresy", "Horus Heresy", "Horus Heresy"] },
+  rebirth: { text: ["The first era after the Horus Heresy, as the Imperium slowly recovered. Reforms were made so no one commander could hold as much power as Horus had; the most notable was the Codex Astartes, which split the loyal Legions into Chapters.",
+      "In 544.M32 the Ork Warboss known as the Beast launched the largest Waaagh! the galaxy had seen, halted only at great cost to the Space Marines. The Beheading of 546.M32 left the Imperium in anarchy."],
+    links: ["Age of Rebirth", "?Age of Rebirth", "?Age of Rebirth"] },
+  forging: { text: ["Considered by some the Imperium’s golden age, the Forging saw the Imperium grow ever harsher and more uncompromising, as the Adeptus Terra bound its most important star systems under ever tighter control."],
+    links: ["?The Forging", "?The Forging", "?The Forging"] },
+  interregnum: { text: ["Also called the time of twin Empires. The Ur-Council of Nova Terra rejected the authority of the High Lords of Terra and claimed rule of the Segmentum Pacificus, splitting the Imperium for around nine centuries."],
+    links: ["Nova Terra Interregnum", "?Nova Terra Interregnum", "?Nova Terra Interregnum"] },
+  apostasy: { text: ["One of the most destabilising periods in Imperial history, in M36, five millennia after the Horus Heresy. It is remembered for the Reign of Blood, when Goge Vandire ruled as both Ecclesiarch and Master of the Administratum and plunged the Imperium into a civil war lasting seven decades."],
+    links: ["Age of Apostasy", "?Age of Apostasy", "?Age of Apostasy"] },
+  redemption: { text: ["From roughly 020.M37 to 034.M38, a period of fierce religious fervour. Huge numbers of suspected heretics were executed, and crusade after crusade was launched to win back what had been lost in the Age of Apostasy."],
+    links: ["Age of Redemption", "?Age of Redemption", "?Age of Redemption"] },
+  waning: { text: ["Running from the start of M39 to the middle of M41, between the Age of Redemption and the Time of Ending. The endless crusades of the previous age had exhausted the Imperium’s military strength."],
+    links: ["?The Waning", "?The Waning", "Waning"] },
+  dark: { text: ["The current era, also known as the Era Indomitus. It began after the fall of Cadia in the 13th Black Crusade and the opening of the Great Rift, which split the Imperium in two. The Imperium has endured largely through the efforts of the revived Primarch Roboute Guilliman and his Indomitus Crusade."],
+    links: ["Era Indomitus", "?Era Indomitus", "?Era Indomitus"] }
+};
+let selectedAge = null;
+function showAgePanel(a, { hash = true, scroll = false } = {}) {
+  const A = AGES[a], info = AGE_INFO[a]; if (!A || !info) return;
+  selected = null; selectedCol = null; selectedAge = a;
+  const cols = COLS.filter(c => COL_AGE[c.id] === a);
+  const members = NODES.filter(n => cols.some(c => c.id === n.f) && n.s !== "group");
+  panel.innerHTML = `
+    <button class="btn close" id="closePanel" aria-label="Close details">Close</button>
+    <div class="crest"><div><h2>${esc(A.name)}</h2><div class="status">${esc(A.dates)}</div></div></div>
+    ${info.text.map(p => `<p class="note">${esc(p)}</p>`).join("")}
+    <dl>
+      <dt>Columns</dt><dd class="kids">${cols.map(c => `<button class="linkish" data-col="${c.id}">${esc(c.name + (c.name.startsWith("Unnumbered") ? " (" + c.date + ")" : ""))}</button>`).join("")}</dd>
+      <dt>On this chart</dt><dd>${members.length} ${members.length === 1 ? "entry" : "entries"} raised in this age</dd>
+    </dl>
+    <p class="note aside">Dates are approximate, and some Foundings are placed in an age by their number rather than a recorded date.</p>
+    <h3>Read more</h3><div class="wikis">${wikiTriple(info.links).map(l => `<a href="${l.url}" target="_blank" rel="noopener noreferrer">${l.label}<small>${esc(l.sub)}</small></a>`).join("")}</div>`;
+  panel.classList.add("open");
+  render();
+  const first = cols.find(c => c.id in colPos);
+  if (scroll && first) view.tx = 40 - colLeft(colPos[first.id]) * view.k;
+  apply();
+  if (hash && location.hash.slice(1) !== "age-" + a) location.hash = "age-" + a;
+}
+const COL_AGE = { origin: "crusade", f1: "crusade", secret: "heresy", warbands: "all", f2: "rebirth", "u-m31": "rebirth",
+  f3: "rebirth", f4: "rebirth", f8: "forging", f9: "forging", f10: "interregnum", "u-m32": "several", f13: "apostasy",
+  f17: "apostasy", "u-m36": "apostasy", f21: "apostasy", edict: "redemption", f23: "redemption", f24: "waning",
+  f25: "waning", f26: "waning", "u-late": "several", ultima: "dark", unrec: "all", fallen: "all" };
+const agesEl = document.getElementById("ages");
+function drawAges() {
+  const bands = [];
+  COLS.forEach(c => {
+    if (!(c.id in colPos)) return;
+    const a = COL_AGE[c.id] || "all", i = colPos[c.id], last = bands[bands.length - 1];
+    if (last && last.age === a && last.end === i - 1) { last.end = i; last.w += colW[i]; }
+    else bands.push({ age: a, start: i, end: i, x: colX[i], w: colW[i] });
+  });
+  agesEl.innerHTML = bands.map((b, k) => { const A = AGES[b.age];
+    return `<div class="age${A.vague ? " vague" : ""}${k % 2 ? " alt" : ""}${b.age === selectedAge ? " sel" : ""}" title="${esc(A.name + ": " + A.dates)}"${A.vague ? "" : ` data-age="${b.age}" role="button" tabindex="0"`} style="left:${view.tx + b.x * view.k}px;width:${b.w * view.k}px;padding-left:${Math.max(11, 11 - (view.tx + b.x * view.k))}px">${esc(A.name)}</div>`; }).join("");
+}
+agesEl.addEventListener("click", e => {
+  if (moved > 4) return;
+  const el = e.target.closest("[data-age]"); if (el) showAgePanel(el.dataset.age);
+});
+agesEl.addEventListener("keydown", e => {
+  const el = e.target.closest("[data-age]"); if (!el || (e.key !== "Enter" && e.key !== " ")) return;
+  e.preventDefault(); showAgePanel(el.dataset.age);
+});
 
 document.getElementById("names").innerHTML = NODES.filter(n => n.s !== "group").map(n => `<option value="${esc(n.name)}">`).join("");
 
@@ -1363,12 +1468,18 @@ function pack(n) {
   const loose = all.filter(k => k.s === "group").flatMap(g => collapsed.has(g.id) ? [] : visKids(g));
   const vk = real.concat(loose), nReal = real.length;
   n._vk = vk; n.open = nReal > 0;
-  const c0 = colPos[n.f];
+  // Columns here are lanes: a column with N lanes takes N slots. An entry with branches
+  // sits in its Founding's last lane so its lines leave from the right; a leaf takes whichever lane is free.
+  n._fixed = vk.length > 0;
+  const ci = colPos[n.f];
+  if (n._fixed) n._lane = colL[ci] - 1;
+  const c0 = colV[ci] + (n._fixed ? colL[ci] - 1 : 0);
   if (!vk.length) { n._offs = []; return new Map([[c0, [[0, 0]]]]); }
   const profs = vk.map(pack);
-  const maxC = nReal ? Math.max(...real.map(k => colPos[k.f])) : c0;
+  const maxC = nReal ? Math.max(...real.map(k => colV[colPos[k.f]] + colL[colPos[k.f]] - 1)) : c0;
+  const shift = (prof, d) => d ? new Map([...prof].map(([c, iv]) => [c + d, iv])) : prof;
   const attempt = C => {
-    const occ = new Map(), offs = [], last = new Map(), lastLoose = new Map();
+    const occ = new Map(), offs = [], lanes = [], last = new Map(), lastLoose = new Map();
     let top = null;
     const add = (c, lo, hi) => { if (!occ.has(c)) occ.set(c, []); occ.get(c).push([lo, hi]); };
     if (C !== null) for (let c = c0 + 1; c < maxC; c++) add(c, C, C);
@@ -1376,14 +1487,21 @@ function pack(n) {
       const kc = colPos[k.f], isLoose = i >= nReal;
       if (isLoose && top === null) { top = 0; for (const ivs of occ.values()) for (const [lo] of ivs) top = Math.min(top, lo); }
       const L = isLoose ? lastLoose : last;
-      let t = L.has(kc) ? L.get(kc) + 1 : (isLoose ? top : 0);
-      while (!fits(profs[i], t, occ)) t++;
-      offs.push(t); L.set(kc, t);
-      for (const [c, ivs] of profs[i]) for (const [lo, hi] of ivs) add(c, lo + t, hi + t);
+      // walk the Founding's slots in reading order (row by row, lanes left to right)
+      const Lk = colL[kc];
+      let slot = L.has(kc) ? L.get(kc) + 1 : (isLoose ? Math.floor(top) : 0) * Lk, t, lane, p;
+      for (;; slot++) {
+        t = Math.floor(slot / Lk); lane = slot - t * Lk;
+        if (k._fixed && lane !== Lk - 1) continue;
+        p = k._fixed ? profs[i] : shift(profs[i], lane);
+        if (fits(p, t, occ)) break;
+      }
+      offs.push(t); lanes.push(k._fixed ? Lk - 1 : lane); L.set(kc, slot);
+      for (const [c, ivs] of p) for (const [lo, hi] of ivs) add(c, lo + t, hi + t);
     });
     const ro = nReal ? offs.slice(0, nReal) : [0];
     const mid = (Math.min(...ro) + Math.max(...ro)) / 2;
-    return { occ, offs, mid, P: C === null ? mid : C };
+    return { occ, offs, lanes, mid, P: C === null ? mid : C };
   };
   let res = attempt(null);
   if (maxC > c0 + 1) {
@@ -1397,6 +1515,7 @@ function pack(n) {
     res = best;
   }
   n._offs = res.offs.map(t => t - res.P);
+  vk.forEach((k, i) => { if (!k._fixed) k._lane = res.lanes[i]; });
   const prof = new Map([[c0, [[0, 0]]]]);
   for (const [c, ivs] of res.occ) prof.set(c, (prof.get(c) || []).concat(ivs.map(([lo, hi]) => [lo - res.P, hi - res.P])));
   return prof;
@@ -1404,6 +1523,7 @@ function pack(n) {
 function layout() {
   laid = [];
   pack(byId.emperor);
+  byId.emperor._lane = 0;
   (function place(n, row) { n.row = row; laid.push(n); n._vk.forEach((k, i) => place(k, row + n._offs[i])); })(byId.emperor, 0);
   let min = Infinity, max = -Infinity;
   laid.forEach(n => { min = Math.min(min, n.row); max = Math.max(max, n.row); });
@@ -1414,9 +1534,9 @@ function layout() {
 /* Long names wrap onto a second line (the root onto up to three) instead of running into the next column */
 const measureCtx = document.createElement("canvas").getContext("2d");
 function labelFont(n) {
-  if (n.s === "root") return '700 15px Cinzel, "Times New Roman", serif';
+  if (n.s === "root") return '700 30px Cinzel, "Times New Roman", serif';
   const italic = ["group", "lost", "expunged"].includes(n.s) ? "italic " : "";
-  return `${italic}${n.num ? 700 : 400} 14px "Alegreya Sans", "Gill Sans", sans-serif`;
+  return `${italic}${n.num ? "700 17px" : "400 14px"} "Alegreya Sans", "Gill Sans", sans-serif`;
 }
 function wrapLines(text, font, maxW, maxLines) {
   measureCtx.font = font;
@@ -1431,9 +1551,11 @@ function wrapLines(text, font, maxW, maxLines) {
 }
 function labelMarkup(n, x, has) {
   const token = has && collapsed.has(n.id) ? `(+${countDesc(n)})` : "";
-  const maxW = (has ? BW - 20 : 210 - 6) - x;   // stop before the knob, or before the next column
-  const lines = wrapLines(n.name + (token ? " " + token : ""), labelFont(n), maxW, n.s === "root" ? 3 : 2);
-  const lh = n.s === "root" ? 17 : 15, y0 = 1 - (lines.length - 1) * lh / 2;
+  const isRoot = n.s === "root";
+  // stop before the knob, or before the next column (the large root title gets the column's full width)
+  const maxW = (isRoot ? ROOT_KNOB_X - 14 : has ? BW - 20 : 210 - 6) - x;
+  const lines = wrapLines(n.name + (token ? " " + token : ""), labelFont(n), maxW, isRoot ? 4 : 2);
+  const lh = isRoot ? 33 : n.num ? 17 : 15, y0 = 1 - (lines.length - 1) * lh / 2;
   const spans = lines.map((ln, i) => {
     let body = esc(ln);
     if (token && i === lines.length - 1 && ln.endsWith(token)) {
@@ -1460,7 +1582,7 @@ function radianceMarkup() {
   return `<defs>
     <radialGradient id="radGlow"><stop offset="0" style="stop-color:var(--brass);stop-opacity:.28"/><stop offset=".45" style="stop-color:var(--brass);stop-opacity:.09"/><stop offset="1" style="stop-color:var(--brass);stop-opacity:0"/></radialGradient>
     <radialGradient id="radRay" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="${R}"><stop offset=".08" style="stop-color:var(--brass);stop-opacity:.32"/><stop offset="1" style="stop-color:var(--brass);stop-opacity:0"/></radialGradient>
-    <clipPath id="radClip"><rect x="${x0}" y="0" width="${COLW}" height="${totalH}"/></clipPath>
+    <clipPath id="radClip"><rect x="${x0}" y="0" width="${colW[colPos[root.f]]}" height="${totalH}"/></clipPath>
   </defs>
   <g clip-path="url(#radClip)" aria-hidden="true" style="pointer-events:none">
     <g transform="translate(${cx},${cy})">
@@ -1488,14 +1610,14 @@ function heraldryUrl(n) {
 function render() {
   computeCols();
   layout();
-  const W = NC * COLW;
+  const W = totalW;
   let out = "";
   COLS.forEach(c => {
     if (!(c.id in colPos)) return;
     const i = colPos[c.id];
     out += c.id === "unrec"
-      ? `<rect class="band unrec" x="${colLeft(i) + 4}" y="0" width="${COLW - 8}" height="${totalH}" rx="6"/>`
-      : `<rect class="band${i % 2 ? " alt" : ""}" x="${colLeft(i)}" y="0" width="${COLW}" height="${totalH}"/>`;
+      ? `<rect class="band unrec" x="${colLeft(i) + 4}" y="0" width="${colW[i] - 8}" height="${totalH}" rx="6"/>`
+      : `<rect class="band${i % 2 ? " alt" : ""}" x="${colLeft(i)}" y="0" width="${colW[i]}" height="${totalH}"/>`;
   });
   out += radianceMarkup();
   for (const n of laid) {
@@ -1516,7 +1638,7 @@ function render() {
       `<rect class="hit" x="-6" y="-15" width="${BW + 10}" height="30" rx="4"/>` +
       (isGroup ? "" : `<g transform="translate(4,-12)">${shieldMarkup(n)}</g>`) +
       labelMarkup(n, isGroup ? 8 : 32, has) +
-      (has ? `<g class="knob" data-act="toggle" transform="translate(${BW - 8},0)"><circle r="8"/><text y="0">${collapsed.has(n.id) ? "+" : "−"}</text></g>` : "") +
+      (has ? `<g class="knob" data-act="toggle" transform="translate(${n.s === "root" ? ROOT_KNOB_X : BW - 8},0)"><circle r="8"/><text y="0">${collapsed.has(n.id) ? "+" : "−"}</text></g>` : "") +
       `</g>`;
   }
   world.innerHTML = out;
@@ -1530,10 +1652,10 @@ function clampView() {
   const open = panel.classList.contains("open");
   const vw = r.width - (open && r.width > 700 ? panel.offsetWidth : 0);
   const vh = r.height - (open && r.width <= 700 ? panel.offsetHeight : 0);
-  const cw = NC * COLW * view.k, ch = totalH * view.k;
+  const cw = totalW * view.k, ch = totalH * view.k;
   view.tx = Math.min(Math.max(view.tx, Math.min(0, vw - cw)), Math.max(0, vw - cw));
   // The heading strip is a fixed 84px on screen, so at any zoom the first row must be able to sit just below it
-  const headroom = Math.max(0, 90 - (PADT - ROWH / 2) * view.k);
+  const headroom = Math.max(0, 114 - (PADT - ROWH / 2) * view.k);
   view.ty = Math.min(Math.max(view.ty, Math.min(headroom, vh - ch)), Math.max(headroom, vh - ch));
 }
 
@@ -1548,12 +1670,14 @@ function apply() {
     const id = COLS[j].id;
     el.hidden = !(id in colPos);
     if (el.hidden) return;
-    const i = colPos[id], w = COLW * view.k;
+    const i = colPos[id], w = colW[i] * view.k;
     el.style.left = (view.tx + colLeft(i) * view.k) + "px";
     el.style.width = w + "px";
     el.classList.toggle("narrow", w < 150);
     el.classList.toggle("tiny", w < 70);
+    el.classList.toggle("sel", id === selectedCol);
   });
+  drawAges();
 }
 
 /* ============================ actions ============================ */
@@ -1586,7 +1710,7 @@ function centerOn(n) {
 function select(id, { center = false, hash = true } = {}) {
   const n = byId[id]; if (!n) return;
   reveal(n);
-  selected = id;
+  selected = id; selectedCol = null; selectedAge = null;
   render();
   showPanel(n);
   trackView(n);
@@ -1667,7 +1791,7 @@ function showPanel(n) {
 }
 
 function closePanel() {
-  panel.classList.remove("open"); selected = null; render(); apply();
+  panel.classList.remove("open"); selected = null; selectedCol = null; selectedAge = null; render(); apply();
   history.replaceState(null, "", location.pathname + location.search);
 }
 
@@ -1693,12 +1817,12 @@ function refilter() {
 // Furthest zoom-out: the whole tree on screen, but never so small that names become unreadable
 function minZoom() {
   const r = stage.getBoundingClientRect();
-  const fitK = Math.min(r.width / (NC * COLW + 40), (r.height - 10) / totalH);
+  const fitK = Math.min(r.width / (totalW + 40), (r.height - 10) / totalH);
   return Math.min(1, Math.max(0.3, fitK));
 }
 
 function fit() {
-  const r = stage.getBoundingClientRect(), W = NC * COLW;
+  const r = stage.getBoundingClientRect(), W = totalW;
   view.k = minZoom();
   view.tx = (r.width - W * view.k) / 2;
   view.ty = 0;
@@ -1706,7 +1830,7 @@ function fit() {
 }
 
 function initialView() {
-  const r = stage.getBoundingClientRect(), W = NC * COLW;
+  const r = stage.getBoundingClientRect(), W = totalW;
   view.k = Math.max(0.6, Math.min(1, (r.height - 10) / totalH));
   if (r.width < 700) view.k = 0.7;
   view.tx = 10;   // origin pinned to the left edge
@@ -1809,10 +1933,141 @@ window.addEventListener("resize", () => apply());
 
 window.addEventListener("hashchange", () => {
   const id = location.hash.slice(1);
+  if (id.startsWith("age-")) { if (id.slice(4) !== selectedAge) showAgePanel(id.slice(4), { hash: false, scroll: true }); return; }
+  if (id.startsWith("founding-")) { if (id.slice(9) !== selectedCol) showFoundingPanel(id.slice(9), { hash: false, scroll: true }); return; }
   if (byId[id] && id !== selected) select(id, { center: true, hash: false });
 });
 
 /* ============================ boot ============================ */
+/* ============================ founding panels ============================
+   Clicking a column heading opens an overview of that Founding.
+   text: short overview; links: [lexicanum, fandom, 2d4chan] page titles,
+   or "?term" to link to that wiki's search for the term instead. */
+const FOUNDING_INFO = {
+  origin: { text: ["The Emperor of Mankind created the twenty Primarchs, and from their gene-seed the twenty Space Marine Legions. Every Legion, Chapter and warband on this chart traces its gene-seed back to one of them."],
+    links: ["Emperor of Mankind", "Emperor of Mankind", "God-Emperor of Mankind"] },
+  f1: { text: ["The twenty Space Marine Legions, raised by the Emperor from the gene-seed of the twenty Primarchs during the Unification Wars and the Great Crusade.",
+      "Two Legions, the II and XI, were later struck from every Imperial record. Nine Legions sided with Horus in the Horus Heresy; the other nine were broken into Chapters in the 2nd Founding."],
+    links: ["Space Marine Legion", "?First Founding", "?First Founding"] },
+  secret: { text: ["The Grey Knights were raised in secret by Malcador the Sigillite on the Emperor’s orders during the Horus Heresy, before the 2nd Founding. Every one of their warriors is a psyker, and the Chapter serves the Inquisition’s Ordo Malleus as daemon-hunters.",
+      "This column is this site’s grouping, not an official Founding."],
+    links: ["Grey Knights", "Grey Knights", "Grey Knights"] },
+  warbands: { text: ["After the Horus Heresy failed, the Traitor Legions fled into the Eye of Terror. Over the following millennia most fractured into rival warbands: some still fight under their Legion’s name, others mix warriors from many sources.",
+      "The Sons of Horus were renamed the Black Legion by Abaddon, and the World Eaters shattered into warbands after the battle of Skalathrax. This column is this site’s grouping, not an official Founding."],
+    links: ["Chaos Space Marine Legions and Warbands (List)", "List of Chaos Space Marine Warbands", "Chaos Space Marines"] },
+  f2: { text: ["The Second Founding took place seven years after the Horus Heresy, when the loyal Legions were broken up into Chapters of about a thousand warriors, as laid down in Roboute Guilliman’s Codex Astartes.",
+      "The Ultramarines produced by far the most successors. The Salamanders produced no recorded successors at all, and the Space Wolves only one, the Wolf Brothers."],
+    links: ["2nd Founding", "2nd Founding", "Second Founding"] },
+  "u-m31": { text: ["Chapters known to have been raised in the 31st Millennium whose Founding number isn’t stated in the sources.", "This column is this site’s grouping, not an official Founding."],
+    links: ["Founding", "?Founding", "?Founding"] },
+  f3: { text: ["The Third Founding (001.M32) was initiated at the suggestion of Rogal Dorn. After more than forty years of preparation, the High Lords of Terra approved over a hundred writs of succession to First and Second Founding Chapters, so the number of Chapters grew enormously in a short time."],
+    links: ["3rd Founding", "3rd Founding", "Third Founding"] },
+  f4: { text: ["The Fourth Founding took place shortly after 546.M32, following the Imperium’s costly victory in the War of the Beast against the Orks."],
+    links: ["4th Founding", "4th Founding", "?Fourth Founding"] },
+  f8: { text: ["Little is recorded about the Eighth Founding beyond the Chapters known to have been raised in it."],
+    links: ["8th Founding", "?Eighth Founding", "?Eighth Founding"] },
+  f9: { text: ["Little is recorded about the Ninth Founding beyond the Chapters known to have been raised in it."],
+    links: ["9th Founding", "?Ninth Founding", "?Ninth Founding"] },
+  f10: { text: ["Little is recorded about the Tenth Founding. Only some Chapters’ placement in it is confirmed; the Astral Claws, who later began the Badab War, are often placed here."],
+    links: ["10th Founding", "?Tenth Founding", "?Tenth Founding"] },
+  "u-m32": { text: ["Chapters known to have been raised between the 3rd and 12th Foundings (M32 to M35) whose Founding number isn’t stated.", "This column is this site’s grouping, not an official Founding."],
+    links: ["Founding", "?Founding", "?Founding"] },
+  f13: { text: ["The Thirteenth Founding, also called the Dark Founding. Its records are largely lost, so it is unclear how many Chapters it produced or which ones."],
+    links: ["13th Founding", "13th Founding", "?Dark Founding"] },
+  f17: { text: ["Almost nothing is recorded about the Seventeenth Founding beyond the Chapters placed in it."],
+    links: ["17th Founding", "?Seventeenth Founding", "?Seventeenth Founding"] },
+  "u-m36": { text: ["Chapters known to have been raised between the 14th and 20th Foundings (around M36) whose Founding number isn’t stated.", "This column is this site’s grouping, not an official Founding."],
+    links: ["Founding", "?Founding", "?Founding"] },
+  f21: { text: ["The Twenty-First, or Cursed, Founding took place in 991.M35, shortly before the Age of Apostasy. It was the largest Founding since the Second.",
+      "The Adeptus Mechanicus set out to perfect the gene-seed and remove its known flaws, but produced seriously flawed gene-seed instead. Many of its Chapters suffered mutations or met dark ends."],
+    links: ["21st Founding", "21st Founding", "?Cursed Founding"] },
+  edict: { text: ["The Sons of Medusa were never part of a numbered Founding. Formed from clans that split from the Iron Hands, they were ratified as a Chapter by an unprecedented edict in 011.M37.", "This column is this site’s grouping, not an official Founding."],
+    links: ["Sons of Medusa", "Sons of Medusa", "Sons of Medusa"] },
+  f23: { text: ["The Twenty-Third, or Sentinel, Founding (late M37 to early M38). Several of its Chapters, such as the Star Phantoms, fought in the Badab War, and the fleet-based Marines Errant were raised to fill gaps left by lost Chapters."],
+    links: ["23rd Founding", "?23rd Founding", "?Sentinel Founding"] },
+  f24: { text: ["Almost nothing is recorded about the Twenty-Fourth Founding beyond the Chapters placed in it."],
+    links: ["24th Founding", "?24th Founding", "?24th Founding"] },
+  f25: { text: ["The Twenty-Fifth, or Bastion, Founding (late M40). The Star Scorpions, raised in it, were thought lost in the Warp but in truth fell to Chaos."],
+    links: ["25th Founding", "?25th Founding", "?Bastion Founding"] },
+  f26: { text: ["The Twenty-Sixth Founding took place in 738.M41, making its Chapters, such as the Mentors, among the most recently founded before the Ultima Founding."],
+    links: ["26th Founding", "?26th Founding", "?26th Founding"] },
+  "u-late": { text: ["Chapters known to have been raised between the 22nd and 26th Foundings (M37 to M41) whose Founding number isn’t stated.", "This column is this site’s grouping, not an official Founding."],
+    links: ["Founding", "?Founding", "?Founding"] },
+  ultima: { text: ["The Ultima Founding began at the turn of the 42nd Millennium. Its Chapters are made up entirely of Primaris Space Marines, developed in secret by Archmagos Belisarius Cawl over ten thousand years and deployed during Roboute Guilliman’s Indomitus Crusade after the Great Rift opened.",
+      "Every First Founding line is represented among its Chapters, and most were given homeworlds along the Great Rift as a bulwark against Chaos. Hundreds of Chapters are said to have been raised; only some are named."],
+    links: ["Ultima Founding", "Ultima Founding", "Ultima Founding"] },
+  unrec: { text: ["Chapters whose Founding is unrecorded. Around a thousand Chapters are believed to exist at any time, but war, Warp storms and lost records mean no one can track them all, and many Chapters are known by little more than a name.",
+      "This column is this site’s grouping, not an official Founding."],
+    links: ["List of Space Marine Chapters", "List of Space Marine Chapters", "?Space Marine Chapters"] },
+  fallen: { text: ["Loyal Chapters, or parts of them, that turned against the Imperium. Renegades are Space Marines who have turned their backs on the Imperium; not all serve Chaos at first, but most eventually turn to the Dark Gods for power.",
+      "Their warbands are linked to the Chapter they came from where it is known. This column is this site’s grouping, not an official Founding."],
+    links: ["Renegade space marine", "?Renegade Chapters", "?Renegade"] }
+};
+
+function foundingLinks(cid) { return wikiTriple((FOUNDING_INFO[cid] || {}).links || ["Founding", "?Founding", "?Founding"]); }
+function wikiTriple(L) {
+  const t = s => encodeURIComponent(s.replace(/’/g, "'").replace(/ /g, "_")).replace(/%2F/g, "/");
+  const q = s => encodeURIComponent(s.slice(1));
+  return [
+    { label: "Lexicanum", sub: "lexicanum.com", url: L[0][0] === "?" ? `https://wh40k.lexicanum.com/mediawiki/index.php?search=${q(L[0])}` : `https://wh40k.lexicanum.com/wiki/${t(L[0])}` },
+    { label: "40k Wiki", sub: L[1][0] === "?" ? "Fandom search" : "Fandom", url: L[1][0] === "?" ? `https://warhammer40k.fandom.com/wiki/Special:Search?query=${q(L[1])}` : `https://warhammer40k.fandom.com/wiki/${t(L[1])}` },
+    { label: "2d4chan", sub: L[2][0] === "?" ? "search" : "formerly 1d4chan", url: L[2][0] === "?" ? `https://2d4chan.org/index.php?search=${q(L[2])}` : `https://2d4chan.org/wiki/${t(L[2])}` }
+  ];
+}
+
+function legionOf(n) {
+  let a = n;
+  while (a && a.p && byId[a.p] && byId[a.p].s !== "root" && byId[a.p].s !== "group") a = byId[a.p];
+  return a && a.p && byId[a.p] && byId[a.p].s === "root" ? a : null;
+}
+function showFoundingPanel(cid, { hash = true, scroll = false } = {}) {
+  const c = COLS[colIdx[cid]]; if (!c) return;
+  selected = null; selectedCol = cid; selectedAge = null;
+  const members = NODES.filter(n => n.f === cid && n.s !== "group");
+  const count = s => members.filter(n => n.s === s).length;
+  const kind = cid === "warbands" || cid === "fallen" ? "entries" : cid === "f1" ? "Legions" : "Chapters";
+  const status = [["loyal", "loyal"], ["traitor", "traitor"], ["renegade", "renegade"], ["lost", "destroyed or lost"], ["expunged", "expunged"]]
+    .map(([s, label]) => [count(s), label]).filter(([k]) => k).map(([k, label]) => `${k} ${label}`).join(", ");
+  const lines = {};
+  members.forEach(n => { const l = legionOf(n); const key = l ? l.name : "Unrecorded"; lines[key] = (lines[key] || 0) + 1; });
+  const lineList = Object.entries(lines).sort((a, b) => b[1] - a[1]);
+  const showLines = cid !== "f1" && cid !== "origin" && lineList.length;
+  const info = FOUNDING_INFO[cid] || { text: [] };
+  const sorted = members.slice().sort((a, b) => a.name.localeCompare(b.name));
+  panel.innerHTML = `
+    <button class="btn close" id="closePanel" aria-label="Close details">Close</button>
+    <div class="crest"><div><h2>${esc(c.name)}</h2><div class="status">${esc([c.ep, c.date].filter(Boolean).join(", "))}</div></div></div>
+    ${info.text.map(p => `<p class="note">${esc(p)}</p>`).join("")}
+    ${c.note ? `<p class="note aside">${esc(c.note)}</p>` : ""}
+    <dl>
+      <dt>On this chart</dt><dd>${members.length} ${members.length === 1 ? kind.replace(/s$/, "") : kind}${status ? `<br><span style="color:var(--muted)">${status}</span>` : ""}</dd>
+      ${showLines ? `<dt>Gene-lines</dt><dd>${lineList.slice(0, 8).map(([k, v]) => `${esc(k)} ${v}`).join("<br>")}${lineList.length > 8 ? `<br><span style="color:var(--muted)">and ${lineList.length - 8} more</span>` : ""}</dd>` : ""}
+    </dl>
+    ${sorted.length && sorted.length <= 40 ? `<h3>${kind === "entries" ? "Entries" : kind}</h3><div class="kids">${sorted.map(k => `<button class="linkish" data-go="${k.id}">${esc(k.name)}</button>`).join("")}</div>` : ""}
+    <h3>Read more</h3><div class="wikis">${foundingLinks(cid).map(l => `<a href="${l.url}" target="_blank" rel="noopener noreferrer">${l.label}<small>${esc(l.sub)}</small></a>`).join("")}</div>
+    <p style="margin-top:1rem"><button class="linkish" data-feedback-col="${cid}">Suggest a correction to this Founding</button></p>`;
+  panel.classList.add("open");
+  render();
+  if (scroll && cid in colPos) view.tx = 40 - colLeft(colPos[cid]) * view.k;   // bring the column into view
+  apply();
+  if (hash && location.hash.slice(1) !== "founding-" + cid) location.hash = "founding-" + cid;
+}
+colsEl.addEventListener("click", e => {
+  if (moved > 4) return;
+  const el = e.target.closest(".col"); if (!el) return;
+  showFoundingPanel(COLS[colEls.indexOf(el)].id);
+});
+colsEl.addEventListener("keydown", e => {
+  const el = e.target.closest(".col"); if (!el || (e.key !== "Enter" && e.key !== " ")) return;
+  e.preventDefault(); showFoundingPanel(COLS[colEls.indexOf(el)].id);
+});
+panel.addEventListener("click", e => {
+  const c = e.target.closest("[data-col]");
+  if (c) { showFoundingPanel(c.dataset.col, { scroll: true }); return; }
+  const b = e.target.closest("[data-feedback-col]");
+  if (b) openFeedback("Correction", COLS[colIdx[b.dataset.feedbackCol]].name);
+});
+
 /* ============================ feedback ============================ */
 const fb = document.getElementById("fb");
 function openFeedback(type = "Suggestion", entry = "") {
@@ -1911,6 +2166,8 @@ initialView();
 if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { render(); apply(); });
 const start = location.hash.slice(1);
 if (byId[start]) select(start, { center: true, hash: false });
+else if (start.startsWith("age-")) showAgePanel(start.slice(4), { hash: false, scroll: true });
+else if (start.startsWith("founding-") && colIdx[start.slice(9)] != null) showFoundingPanel(start.slice(9), { hash: false, scroll: true });
 </script>
 </body>
 </html>
